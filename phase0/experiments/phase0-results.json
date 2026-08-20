@@ -1,0 +1,117 @@
+{
+  "experiment": "phase0-history-scarcity",
+  "generatedAt": "2026-08-20T11:57:20.481Z",
+  "zeroDependency": true,
+  "deterministic": true,
+  "P0_1": {
+    "label": "bare identity baseline",
+    "keypairs": 1000,
+    "totalMs": 34.483400002121925,
+    "bareMs": 0.034483400002121925
+  },
+  "P0_2": {
+    "label": "forgery interception",
+    "perKindCount": 100,
+    "perKind": {
+      "randomSolution": {
+        "attempted": 100,
+        "rejected": 100,
+        "rejectRate": 1,
+        "sampleReasons": [
+          "solution recomputation mismatch (work not actually performed)",
+          "auditor 'aud-6a72c37fe910fabe' signature invalid (not bound to work+solution)",
+          "auditor 'aud-73b5d9efed788ea7' signature invalid (not bound to work+solution)",
+          "auditor 'aud-e03a863049acbc9b' signature invalid (not bound to work+solution)"
+        ]
+      },
+      "fakeSig": {
+        "attempted": 100,
+        "rejected": 100,
+        "rejectRate": 1,
+        "sampleReasons": [
+          "auditor 'aud-da900fecd7b460ec' signature invalid (not bound to work+solution)",
+          "auditor 'aud-203d2a144521efce' signature invalid (not bound to work+solution)",
+          "auditor 'aud-b7ea056460f2a2ee' signature invalid (not bound to work+solution)"
+        ]
+      },
+      "duplicateAuditor": {
+        "attempted": 100,
+        "rejected": 100,
+        "rejectRate": 1,
+        "sampleReasons": [
+          "auditors not distinct (duplicate or missing auditor id)"
+        ]
+      }
+    },
+    "overall": {
+      "attempted": 300,
+      "rejected": 300,
+      "rejectRate": 1
+    }
+  },
+  "P0_3": {
+    "label": "honest cost curve",
+    "seed": "phase0-honest-seed",
+    "costs": [
+      {
+        "difficulty": 1000,
+        "solveMs": 1.6372999995946884,
+        "credentialMs": 4.52759999781847,
+        "verified": true,
+        "solution": "9c2a3e76ffda9469…",
+        "auditors": 3
+      },
+      {
+        "difficulty": 10000,
+        "solveMs": 13.320500001311302,
+        "credentialMs": 33.30979999899864,
+        "verified": true,
+        "solution": "70b511e444d2b6b8…",
+        "auditors": 3
+      },
+      {
+        "difficulty": 100000,
+        "solveMs": 114.57370000332594,
+        "credentialMs": 340.29659999907017,
+        "verified": true,
+        "solution": "e683500054038c54…",
+        "auditors": 3
+      }
+    ]
+  },
+  "P0_4": {
+    "label": "leverage conclusion",
+    "deterministic": true,
+    "determinismNote": "same seed yields identical solution across independent solves",
+    "binding": {
+      "validPasses": true,
+      "tamperSeedRejected": true,
+      "tamperDifficultyRejected": true,
+      "tamperSolutionRejected": true,
+      "tamperSigRejected": true
+    },
+    "bareMs": 0.034483400002121925,
+    "honestMs": 4.52759999781847,
+    "forgeRejectRate": 1,
+    "ratio": 131.29795778664126,
+    "leverageHolds": true,
+    "costModel": {
+      "C_bare": {
+        "unit": "ms",
+        "value": 0.034483400002121925,
+        "meaning": "生成 1 个裸身份（Ed25519 密钥对）的耗时：零成本基线"
+      },
+      "C_forge": {
+        "unit": "ratio",
+        "value": 1,
+        "meaning": "伪造 1 个有历史凭证：跳过工作编造 solution / 伪造审计签名 / 审计者重复，全部被重放验证 100% 拦截，唯一出路是真干活"
+      },
+      "C_honest": {
+        "unit": "ms",
+        "value": 4.52759999781847,
+        "meaning": "真实完成 1 个凭证（difficulty=1000 的哈希链 + 3 路独立审计重算与签名）的耗时，可由 difficulty 参数调节"
+      },
+      "conclusion": "C_bare=0.0345ms：伪造 1000 个裸公钥零成本，单身份毫秒级。 C_forge=100% 拦截：三种伪造路径（编造 solution / 伪造签名 / 审计者重复）合计 300 个伪造件全部被验证门拒绝，伪造者无法跳过工作量。 C_honest=4.528ms@difficulty1000：诚实成本可调（difficulty 1000/10000/100000 递增），稀缺性 = 可调工作成本 + 不可伪造的多路审计链。 杠杆比 C_honest/C_bare=131.3：伪造 1 个\"有可验证历史\"的身份必须付出真实工作量，历史成本杠杆成立。"
+    }
+  }
+}

@@ -1,0 +1,121 @@
+{
+  "experiment": "phase5-vap-to",
+  "generatedAt": "2026-08-20T11:59:54.316Z",
+  "zeroDependency": true,
+  "reusedModules": [
+    "../vap-core.mjs",
+    "../phase3/endorse-core.mjs"
+  ],
+  "n": 4,
+  "f": 1,
+  "qcThreshold": 3,
+  "commitRule": "HotStuff 3-chain: B has QC and child and grandchild each have QC -> commit B",
+  "superweaponRulings": [
+    "commit 规则 = HotStuff 标准 3-chain（安全优先，最保守）",
+    "分车道：窄车道（type=commit）走共识总序；默认车道（报告/任务）走既有 nonce 去重",
+    "不引入门限签名：QC = 2f+1 个个体签名集合"
+  ],
+  "T1": {
+    "label": "normal convergence (10 rounds)",
+    "rounds": 10,
+    "committedBlocks": 8,
+    "committedViews": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "firstBlockHash": "68893a0c09baa72c26cd30903f1e6eac4cf52c7ce1dd55ec86692a83404700f3",
+    "lastBlockHash": "24c87da29a4129d8ba96a8ddbb9843d7e5c61182ae736e626093f8c853548dc9",
+    "allNodesIdenticalPrefix": true,
+    "pass": true
+  },
+  "T2": {
+    "label": "crash fault tolerance",
+    "crashedView": 3,
+    "crashedLeader": "n4",
+    "newViewAfterTimeout": 4,
+    "committedBeforeCrashViews": [
+      0
+    ],
+    "committedAfterRecoveryViews": [
+      0,
+      1,
+      2
+    ],
+    "prefixNotRolledBack": true,
+    "newLeaderCommitted": true,
+    "pass": true
+  },
+  "T3": {
+    "label": "fork injection + equivocation expulsion",
+    "forkView": 3,
+    "byzantineLeader": "n4",
+    "distinctForkBlockHashes": true,
+    "p1Votes": 2,
+    "p2Votes": 2,
+    "qcAtForkView": false,
+    "equivocationEvidenceCount": 1,
+    "equivocator": "n4",
+    "evidenceVerifiable": true,
+    "autoExpelled": true,
+    "branchesCommittedFromFork": 0,
+    "postExpelQcSigs": [
+      "n1",
+      "n2",
+      "n3"
+    ],
+    "postExpelQcSigCount": 3,
+    "finalCommittedViews": [
+      0,
+      1,
+      2
+    ],
+    "pass": true
+  },
+  "T4": {
+    "label": "double-spend rejection",
+    "nonce": "alice:ds-1",
+    "mempoolRejected": true,
+    "votesOnDoubleSpendProposal": 0,
+    "doubleSpendEnteredQc": false,
+    "rejectedBeforeVote": true,
+    "pass": true
+  },
+  "T5": {
+    "label": "deterministic replay",
+    "rounds": 6,
+    "ledgerBytesA": 1770,
+    "ledgerBytesB": 1770,
+    "ledgerSha256A": "fc7979ac78d9d3209f43fa4d88ba9983c5ed6ed6f2f0b4ee49be62178a7c3ab0",
+    "ledgerSha256B": "fc7979ac78d9d3209f43fa4d88ba9983c5ed6ed6f2f0b4ee49be62178a7c3ab0",
+    "byteIdentical": true,
+    "pass": true
+  },
+  "T6": {
+    "label": "restart recovery",
+    "roundsBeforeRestart": 6,
+    "recoveredBlocks": 4,
+    "recoveredIdentical": true,
+    "continueFromView": 4,
+    "newlyCommittedView": 4,
+    "newlyCommittedParentHash": "1498896dd536dab5574684114a5b2624ae1924a08e8be711b7d914c97e431a89",
+    "lastRecoveredBlockHash": "1498896dd536dab5574684114a5b2624ae1924a08e8be711b7d914c97e431a89",
+    "extendedRecoveredPrefix": true,
+    "pass": true
+  },
+  "conclusion": {
+    "T1_normalConvergence": true,
+    "T2_crashFaultTolerance": true,
+    "T3_forkInjectionExpulsion": true,
+    "T4_doubleSpendRejected": true,
+    "T5_deterministicReplay": true,
+    "T6_restartRecovery": true,
+    "allPass": true,
+    "verdict": "锁步 QC 链共识内核（VAP-TO）T1-T6 全达标：收敛一致、崩溃容错、分叉注入自动除名、双花投票前拒、确定性重放逐字节一致、重启恢复已提交前缀"
+  }
+}

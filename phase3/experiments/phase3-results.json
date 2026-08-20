@@ -1,0 +1,134 @@
+{
+  "experiment": "phase3-endorse",
+  "generatedAt": "2026-08-20T11:57:23.409Z",
+  "zeroDependency": true,
+  "reusedModules": [
+    "../vap-core.mjs",
+    "../phase0.5/bootstrap-forge.mjs",
+    "../phase0/history-forge.mjs"
+  ],
+  "rosterSize": 4,
+  "threshold": 3,
+  "byzantineToleranceF": 1,
+  "genesis": {
+    "id": "genesis-anchor"
+  },
+  "E1": {
+    "label": "normal endorsement",
+    "rosterSize": 4,
+    "threshold": 3,
+    "endorsementsCollected": 3,
+    "collectQCOk": true,
+    "verifyQCPass": true,
+    "verifyQCReasons": [],
+    "qcHolds": true
+  },
+  "E2": {
+    "label": "byzantine refusal fault tolerance",
+    "f": 1,
+    "refusals": [
+      {
+        "nodeId": "n4",
+        "kind": "withhold"
+      }
+    ],
+    "honestEndorsements": 3,
+    "threshold": 3,
+    "collectQCOk": true,
+    "verifyQCPass": true,
+    "verifyQCReasons": [],
+    "quorumHeldDespiteRefusal": true
+  },
+  "E3": {
+    "label": "forged endorsement rejection",
+    "collectQCOk": true,
+    "collectKept": 3,
+    "collectIgnored": [
+      "collectQC: endorser 'n4' signature invalid, ignored"
+    ],
+    "verifyQCPassOnForgedQC": false,
+    "verifyQCReasons": [
+      "verifyQC: endorsement 'n4' signature invalid"
+    ],
+    "forgedRejected": true
+  },
+  "E4": {
+    "label": "double-sign detection",
+    "envelopeId": "evt-7975f1a99a0c0af4",
+    "doubleSigner": "n3",
+    "evidenceCount": 1,
+    "evidence": [
+      {
+        "nodeId": "n3",
+        "envelopeId": "evt-7975f1a99a0c0af4",
+        "contentA": "{\"boundary\":\"L0\",\"claim\":{\"body\":{\"n\":1},\"type\":\"report\"},\"evidence\":{\"bills\":{},\"devices\":[\"dev-1\"],\"digest\":\"sha256:abc\"},\"from\":{\"nodeId\":\"origin\",\"pubKey\":\"MCowBQYDK2VwAyEAfvarS3gEwzzC+fCOdSQELr42zhyN6lZQEMvOA2hMEtU=\"},\"id\":\"evt-7975f1a99a0c0af4\",\"nonce\":\"2f0d76d78b61d0ce\",\"report\":{\"keyNumbers\":[],\"request\":\"\",\"summary\":\"phase3 quorum envelope\"},\"sig\":\"LEztzuMYPnASNJH2V0BlOZvsx3pbLSM/wFhmD5YxePIAC3Z3yo4FlzCieEu9/1DZOn/CMpQAk+FouqecRp9bAg==\",\"to\":\"brain\",\"ts\":\"2026-08-20T11:57:23.390Z\",\"v\":1}",
+        "contentB": "{\"boundary\":\"L0\",\"claim\":{\"body\":{\"conflicting\":true},\"type\":\"report\"},\"evidence\":{\"bills\":{},\"devices\":[\"dev-1\"],\"digest\":\"sha256:abc\"},\"from\":{\"nodeId\":\"origin\",\"pubKey\":\"MCowBQYDK2VwAyEAfvarS3gEwzzC+fCOdSQELr42zhyN6lZQEMvOA2hMEtU=\"},\"id\":\"evt-7975f1a99a0c0af4\",\"nonce\":\"2f0d76d78b61d0ce\",\"report\":{\"keyNumbers\":[],\"request\":\"\",\"summary\":\"phase3 quorum envelope\"},\"sig\":\"BJMdi6XfiocO8gxSMA670a74KmRMu0gMlGaY3d4pgjDZOaC7nVlfe0RybpE/h/Quz6CZ9t14L1+BH98FxepRBQ==\",\"to\":\"brain\",\"ts\":\"2026-08-20T11:57:23.390Z\",\"v\":1}",
+        "sigA": "uWEHw/LlDoX8uAC7Q9urn64xN0SQySwHLzZ9OxwmEgDTk6mnym5yF2OS9cWMvB97PP1J2XZhsCqH5UCmZmvyCA==",
+        "sigB": "8s8I3x6Oj4OBj2elPD+pTtVsk6sLx+iYnJ9uesYe1gjuLvSyjUgmHKOsf2UDsXU5q6Hhohn0Y8z82t9e7bFcDA=="
+      }
+    ],
+    "evidenceVerifiable": true
+  },
+  "E5": {
+    "label": "unqualified endorser not counted",
+    "outsiderId": "n5",
+    "endorseThrew": true,
+    "endorseError": "endorse: endorser 'n5' lacks qualification credential (unqualified)",
+    "verifyQCPass": false,
+    "verifyQCReasons": [
+      "verifyQC: endorser 'n5' not in qualified roster (no qualification)",
+      "verifyQC: effective endorsements 2 < threshold 3 (no 2/3 quorum)"
+    ],
+    "effectiveEndorsements": 2,
+    "unqualifiedNotCounted": true
+  },
+  "E6": {
+    "label": "dishonest envelope cannot reach 2/3",
+    "endorserAttempts": [
+      {
+        "nodeId": "n1",
+        "refused": true,
+        "reason": "envelope fails three gates (external validity predicate refused)"
+      },
+      {
+        "nodeId": "n2",
+        "refused": true,
+        "reason": "envelope fails three gates (external validity predicate refused)"
+      },
+      {
+        "nodeId": "n3",
+        "refused": true,
+        "reason": "envelope fails three gates (external validity predicate refused)"
+      },
+      {
+        "nodeId": "n4",
+        "refused": true,
+        "reason": "envelope fails three gates (external validity predicate refused)"
+      }
+    ],
+    "allRefused": true,
+    "collectQCOk": false,
+    "verifyQCPass": false,
+    "verifyQCReasons": [
+      "verifyQC: envelope fails three gates (replayed, not trusted)"
+    ],
+    "noQuorum": true
+  },
+  "endorseConclusion": {
+    "E1_qcHolds": true,
+    "E2_faultTolerance": true,
+    "E3_forgedRejected": true,
+    "E4_evidenceVerifiable": true,
+    "E5_unqualifiedNotCounted": true,
+    "E6_noQuorumOnDishonest": true,
+    "allPass": true,
+    "verdict": "分布式 2/3 背书成立：正常 QC 达成、f=1 拒签容错、伪造背书拒绝、双签证据第三方可验、无资格不计入、不诚实信封拿不到 2/3",
+    "honestBoundaries": [
+      "roster 是静态的（装置内预设 4 节点）——动态成员是 Phase 6 的题",
+      "背书者资格链 gen-k 深度与 roster 的对应关系装置内固定（k=0 起），公网参数未定",
+      "网络层（P2P 洪泛背书请求）以内存调用模拟——真实 UDP 洪泛背书是 Phase 4 的题",
+      "QC 不产总序（两个 QC 可并存分叉）——共识是 Phase 5 的题，本阶段只有认可没有排序",
+      ">2n/3 恶意时系统无法区分（诚实标注：不是防，是数学边界）"
+    ]
+  }
+}

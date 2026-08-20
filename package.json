@@ -1,0 +1,44 @@
+{
+  "name": "dsh-vap",
+  "version": "0.2.0",
+  "description": "VAP — 可验证智能体交互协议（零第三方依赖）",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "os": [
+    "win32",
+    "darwin",
+    "linux"
+  ],
+  "files": [
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "vap-spec.md",
+    "*.mjs",
+    "bin/",
+    "bridges/",
+    "phase*/DESIGN.md",
+    "phase*/P*-REPORT.md",
+    "phase*/experiments/*.mjs",
+    "experiments/",
+    "tests/",
+    "laws.json"
+  ],
+  "bin": {
+    "vap-relay": "bin/vap-relay.mjs",
+    "vap-gateway": "bin/vap-gateway.mjs",
+    "vap-node": "bin/vap-node.mjs",
+    "vap-send": "bin/vap-send.mjs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "relay": "node bin/vap-relay.mjs",
+    "gateway": "node bin/vap-gateway.mjs",
+    "node": "node bin/vap-node.mjs",
+    "send": "node bin/vap-send.mjs"
+  },
+  "license": "Apache-2.0"
+}

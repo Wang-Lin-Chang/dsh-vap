@@ -1,0 +1,233 @@
+{
+  "experiment": "phase05-bootstrap-forge",
+  "generatedAt": "2026-08-20T11:57:20.702Z",
+  "zeroDependency": true,
+  "A": {
+    "label": "legitimate generational chain",
+    "steps": [
+      {
+        "generation": 0,
+        "holder": "aud-7ea72f33f2ddf56f",
+        "auditorIds": [
+          "genesis-anchor"
+        ],
+        "credentialId": "cred-f419e18037e182b77392f81a"
+      },
+      {
+        "generation": 1,
+        "holder": "aud-5ad67404de51a83c",
+        "auditorIds": [
+          "aud-7ea72f33f2ddf56f"
+        ],
+        "credentialId": "cred-9ae936b0fd0a56eed9ef04e1"
+      },
+      {
+        "generation": 2,
+        "holder": "aud-8c7c708438e29942",
+        "auditorIds": [
+          "aud-5ad67404de51a83c"
+        ],
+        "credentialId": "cred-9efa9a9ef143de2aa2408a4d"
+      },
+      {
+        "generation": 3,
+        "holder": "aud-d90f9726c2540d8c",
+        "auditorIds": [
+          "aud-8c7c708438e29942"
+        ],
+        "credentialId": "cred-7e9187a5a7ea18b30278402e"
+      }
+    ],
+    "verifications": [
+      {
+        "generation": 0,
+        "credentialId": "cred-f419e18037e182b77392f81a",
+        "pass": true,
+        "reasons": [],
+        "rootReached": true,
+        "chainDepth": 1,
+        "chainGenerations": [
+          0
+        ]
+      },
+      {
+        "generation": 1,
+        "credentialId": "cred-9ae936b0fd0a56eed9ef04e1",
+        "pass": true,
+        "reasons": [],
+        "rootReached": true,
+        "chainDepth": 2,
+        "chainGenerations": [
+          1,
+          0
+        ]
+      },
+      {
+        "generation": 2,
+        "credentialId": "cred-9efa9a9ef143de2aa2408a4d",
+        "pass": true,
+        "reasons": [],
+        "rootReached": true,
+        "chainDepth": 3,
+        "chainGenerations": [
+          2,
+          1,
+          0
+        ]
+      },
+      {
+        "generation": 3,
+        "credentialId": "cred-7e9187a5a7ea18b30278402e",
+        "pass": true,
+        "reasons": [],
+        "rootReached": true,
+        "chainDepth": 4,
+        "chainGenerations": [
+          3,
+          2,
+          1,
+          0
+        ]
+      }
+    ],
+    "allPass": true,
+    "rootReached": true,
+    "chainExtendedToGen3": true
+  },
+  "B": {
+    "label": "self-endorsement attack",
+    "selfMadeNoQualification": {
+      "attempted": 100,
+      "rejected": 100,
+      "rejectRate": 1,
+      "sampleReasons": [
+        [
+          "auditor 'aud-60eb3136192886da' presents no gen-0 credential (qualification missing)",
+          "auditor 'aud-c5bfc16e8438af4b' presents no gen-0 credential (qualification missing)",
+          "auditor 'aud-d3a20676f586feac' presents no gen-0 credential (qualification missing)"
+        ],
+        [
+          "auditor 'aud-3f27786896875ff7' presents no gen-0 credential (qualification missing)",
+          "auditor 'aud-0946b006d3453278' presents no gen-0 credential (qualification missing)",
+          "auditor 'aud-4e4107660ecaca1d' presents no gen-0 credential (qualification missing)"
+        ]
+      ]
+    },
+    "selfReference": {
+      "attempted": 100,
+      "rejected": 100,
+      "rejectRate": 1,
+      "sampleReasons": [
+        [
+          "self-endorsement forbidden: auditor 'aud-583736b6137dca3c' equals holder"
+        ],
+        [
+          "self-endorsement forbidden: auditor 'aud-f22f6608409f4b25' equals holder"
+        ]
+      ]
+    }
+  },
+  "C": {
+    "label": "cross-generation forgery attack",
+    "fabricatedSolution": {
+      "attempted": 100,
+      "rejected": 100,
+      "rejectRate": 1,
+      "sampleReasons": [
+        [
+          "auditor 'aud-34e117191dc29897' qualification credential fails replay (solution fabricated)"
+        ],
+        [
+          "auditor 'aud-71342a6a2ad5da0f' qualification credential fails replay (solution fabricated)"
+        ]
+      ]
+    },
+    "fabricatedSignature": {
+      "attempted": 100,
+      "rejected": 100,
+      "rejectRate": 1,
+      "sampleReasons": [
+        [
+          "auditor 'aud-09d545eca43878cd' qualification chain invalid: [cred-bf6d95e63cd5089efb3373af] genesis signature invalid for auditor 'genesis-anchor'"
+        ],
+        [
+          "auditor 'aud-e665dc17dffdb36a' qualification chain invalid: [cred-21b02954d727af28b98e8ca1] genesis signature invalid for auditor 'genesis-anchor'"
+        ]
+      ]
+    },
+    "crossGeneration": {
+      "attempted": 100,
+      "rejected": 100,
+      "rejectRate": 1,
+      "sampleReasons": [
+        [
+          "auditor 'aud-b4615f00715441d3' credential generation 0 != required 1 (cross-generation forgery)"
+        ],
+        [
+          "auditor 'aud-04b42f7fb0c73629' credential generation 0 != required 1 (cross-generation forgery)"
+        ]
+      ]
+    }
+  },
+  "D": {
+    "label": "lax-sign attack and accountability",
+    "qualifiedAuditorId": "aud-bc0c42755772263c",
+    "victimHolderId": "aud-52dc5feb5c8cfcd8",
+    "laxCredentialId": "cred-a7c76a5802728c2c69c2caf9",
+    "laxVerifyPass": false,
+    "laxVerifyReasons": [
+      "[cred-a7c76a5802728c2c69c2caf9] solution recomputation mismatch (work not actually performed)"
+    ],
+    "trailFile": "C:\\Users\\王霖昌\\Desktop\\dsh-vap\\phase0.5\\trails-d\\trail-aud-bc0c42755772263c.jsonl",
+    "trailEntry": {
+      "auditorId": "aud-bc0c42755772263c",
+      "credentialId": "cred-a7c76a5802728c2c69c2caf9",
+      "generation": 1,
+      "ts": "2026-08-20T11:57:20.651Z"
+    },
+    "audit": {
+      "checked": 1,
+      "passed": 0,
+      "failed": 1,
+      "failRate": 1,
+      "evidence": [
+        {
+          "auditorId": "aud-bc0c42755772263c",
+          "credentialId": "cred-a7c76a5802728c2c69c2caf9",
+          "generation": 1,
+          "reasons": [
+            "[cred-a7c76a5802728c2c69c2caf9] solution recomputation mismatch (work not actually performed)"
+          ]
+        }
+      ]
+    },
+    "accountabilityComplete": true
+  },
+  "E": {
+    "label": "audit spot-check",
+    "total": 100,
+    "bad": 20,
+    "good": 80,
+    "sampleRatio": 0.2,
+    "sampled": 20,
+    "badInSample": 4,
+    "badDetected": 4,
+    "detectionRate": 1,
+    "fullSetRecall": 0.2,
+    "goodInSample": 16,
+    "goodFlagged": 0,
+    "falsePositiveRate": 0,
+    "overallFailRate": 0.2,
+    "evidenceCount": 4
+  },
+  "bootstrapConclusion": {
+    "chainHolds": true,
+    "selfEndorsementInfeasible": true,
+    "crossGenerationForgeryRejected": true,
+    "laxSignAccountable": true,
+    "spotCheckEffective": true,
+    "bootstrapHolds": true,
+    "genesisAnchorNote": "唯一中心化假设：创世锚（诚实标注）；其余信任由代际凭证链 + 审计留痕 + 独立复核抽查推导",
+    "verdict": "自举成立：除创世锚外无中心化假设，代际链可延伸至 gen-3，自我背书与跨代伪造 100% 拒，放水可追责，独立复核抽查有效"
+  }
+}

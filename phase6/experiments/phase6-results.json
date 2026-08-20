@@ -1,0 +1,86 @@
+{
+  "experiment": "phase6-membership",
+  "generatedAt": "2026-08-20T11:59:54.613Z",
+  "zeroDependency": true,
+  "reusedModules": [
+    "../vap-core.mjs",
+    "../phase0.5/bootstrap-forge.mjs",
+    "../phase0/history-forge.mjs",
+    "../phase3/endorse-core.mjs",
+    "../phase5/vap-to.mjs"
+  ],
+  "reusedZeroChange": true,
+  "n0": 4,
+  "f0": 1,
+  "delayBlocks": 2,
+  "fRecompute": "floor((n-1)/3)",
+  "lawsAsVoteBeforePredicate": true,
+  "D1": {
+    "label": "D1 join activation (4→5)",
+    "baselineCommitted": 1,
+    "joinCommitted": true,
+    "rosterBeforeWindow": 4,
+    "rosterAfter": 5,
+    "n5InRoster": true,
+    "fAfter": 1,
+    "thresholdAfter": 3,
+    "n5CommittedBlocks": 1,
+    "n5FirstBlockView": 7,
+    "n5AgreesWithOriginalNodes": true,
+    "fiveNodeConsensusAdvanced": true,
+    "pass": true
+  },
+  "D2": {
+    "label": "D2 expulsion (equivocation, 4→3)",
+    "evidenceCount": 1,
+    "evidenceVerifiable": true,
+    "equivocator": "n4",
+    "slashSubmitted": true,
+    "expelledImmediately": true,
+    "rosterBeforeWindow": 4,
+    "rosterAfter": 3,
+    "fAfter": 0,
+    "thresholdAfter": 1,
+    "signatureExcludedImmediately": true,
+    "threeNodeConsensusAdvanced": true,
+    "pass": true
+  },
+  "D3": {
+    "label": "D3 key rotation",
+    "rotationSubmitted": true,
+    "keyBeforeWindow": true,
+    "newKeyActive": true,
+    "oldKeyRejected": true,
+    "newKeyAccepted": true,
+    "pass": true
+  },
+  "D4": {
+    "label": "D4 laws on chain",
+    "invalidEnvelopeZeroVotes": true,
+    "invalidEnvelopeEnteredQc": false,
+    "slashEvidenceVerifiable": true,
+    "slashCommitted": true,
+    "autoExpelled": true,
+    "rosterBeforeWindow": 4,
+    "rosterDroppedAfterDelay": true,
+    "pass": true
+  },
+  "D5": {
+    "label": "D5 delay window (no interruption)",
+    "rosterAtCommit": 4,
+    "windowVotes": 4,
+    "windowQc": true,
+    "rosterAfterWindow": 5,
+    "continuedAfterSwitch": true,
+    "pass": true
+  },
+  "conclusion": {
+    "D1_joinActivation": true,
+    "D2_expulsion": true,
+    "D3_keyRotation": true,
+    "D4_lawsOnChain": true,
+    "D5_delayWindow": true,
+    "allPass": true,
+    "verdict": "动态成员 + 军法上链（VAP-TO 扩展）D1-D5 全达标：加入 4→5、除名签名立即不计入 + roster 延迟、密钥轮换旧钥失效新钥生效、军法投票前 0 票 + slash 上链、延迟窗口无中断"
+  }
+}

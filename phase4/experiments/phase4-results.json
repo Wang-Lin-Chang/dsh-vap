@@ -1,0 +1,270 @@
+{
+  "experiment": "phase4-relay",
+  "generatedAt": "2026-08-20T11:57:34.741Z",
+  "zeroDependency": true,
+  "reusedModules": [
+    "../vap-core.mjs"
+  ],
+  "r1_allPass": true,
+  "r2_intercepted": true,
+  "r3_detected": true,
+  "r4_baseline": [
+    {
+      "connections": 50,
+      "connectionsEstablished": 50,
+      "envelopesPerConnection": 10,
+      "envelopesSent": 500,
+      "forwarded": 500,
+      "allForwarded": true,
+      "totalBytes": 286690,
+      "forwardedBytes": 281200,
+      "durationSec": 0.465,
+      "cpuMs": 454,
+      "memRssBefore": 80367616,
+      "memRssAfter": 82755584,
+      "memRssDelta": 2387968,
+      "bytesPerSec": 604731.183,
+      "envelopesPerSec": 1075.269
+    },
+    {
+      "connections": 200,
+      "connectionsEstablished": 200,
+      "envelopesPerConnection": 10,
+      "envelopesSent": 2000,
+      "forwarded": 2000,
+      "allForwarded": true,
+      "totalBytes": 1152790,
+      "forwardedBytes": 1130700,
+      "durationSec": 1.75,
+      "cpuMs": 1750,
+      "memRssBefore": 86016000,
+      "memRssAfter": 95272960,
+      "memRssDelta": 9256960,
+      "bytesPerSec": 646114.286,
+      "envelopesPerSec": 1142.857
+    },
+    {
+      "connections": 500,
+      "connectionsEstablished": 500,
+      "envelopesPerConnection": 10,
+      "envelopesSent": 5000,
+      "forwarded": 5000,
+      "allForwarded": true,
+      "totalBytes": 2887090,
+      "forwardedBytes": 2831700,
+      "durationSec": 4.478,
+      "cpuMs": 4453,
+      "memRssBefore": 100179968,
+      "memRssAfter": 111583232,
+      "memRssDelta": 11403264,
+      "bytesPerSec": 632358.196,
+      "envelopesPerSec": 1116.57
+    }
+  ],
+  "allPass": true,
+  "R1": {
+    "groups": {
+      "group1": [
+        "A1",
+        "A2",
+        "A3"
+      ],
+      "group2": [
+        "B1",
+        "B2",
+        "B3"
+      ]
+    },
+    "connected": 6,
+    "envelopesSent": 18,
+    "allReceived": true,
+    "allGatesPass": true,
+    "perRecipient": [
+      {
+        "nodeId": "A1",
+        "expected": 3,
+        "received": 3
+      },
+      {
+        "nodeId": "A2",
+        "expected": 3,
+        "received": 3
+      },
+      {
+        "nodeId": "A3",
+        "expected": 3,
+        "received": 3
+      },
+      {
+        "nodeId": "B1",
+        "expected": 3,
+        "received": 3
+      },
+      {
+        "nodeId": "B2",
+        "expected": 3,
+        "received": 3
+      },
+      {
+        "nodeId": "B3",
+        "expected": 3,
+        "received": 3
+      }
+    ],
+    "relayForwarded": 18,
+    "r1_allPass": true
+  },
+  "R2": {
+    "forgedEnvelopeId": "evt-cfee72c54eae7538",
+    "arrived": true,
+    "intercepted": true,
+    "notRecorded": true,
+    "relayForwardedForged": true,
+    "rejectReasons": "signature verification failed",
+    "r2_intercepted": true
+  },
+  "R3": {
+    "expected": 2,
+    "sent": 2,
+    "received": 1,
+    "relayDropped": 1,
+    "missing": [
+      "evt-88ed8a4fdf3f222d"
+    ],
+    "evidence": {
+      "sendConfirmations": [
+        "evt-88ed8a4fdf3f222d",
+        "evt-45663c52d06ab14a"
+      ],
+      "arrivalConfirmations": [
+        "evt-45663c52d06ab14a"
+      ],
+      "missing": [
+        "evt-88ed8a4fdf3f222d"
+      ],
+      "conclusion": "censorship/丢包 detected：发送确认 2 vs 到达确认 1"
+    },
+    "r3_detected": true
+  },
+  "R4": {
+    "sizes": [
+      50,
+      200,
+      500
+    ],
+    "perClient": 10,
+    "table": [
+      {
+        "connections": 50,
+        "connectionsEstablished": 50,
+        "envelopesPerConnection": 10,
+        "envelopesSent": 500,
+        "forwarded": 500,
+        "allForwarded": true,
+        "totalBytes": 286690,
+        "forwardedBytes": 281200,
+        "durationSec": 0.465,
+        "cpuMs": 454,
+        "memRssBefore": 80367616,
+        "memRssAfter": 82755584,
+        "memRssDelta": 2387968,
+        "bytesPerSec": 604731.183,
+        "envelopesPerSec": 1075.269
+      },
+      {
+        "connections": 200,
+        "connectionsEstablished": 200,
+        "envelopesPerConnection": 10,
+        "envelopesSent": 2000,
+        "forwarded": 2000,
+        "allForwarded": true,
+        "totalBytes": 1152790,
+        "forwardedBytes": 1130700,
+        "durationSec": 1.75,
+        "cpuMs": 1750,
+        "memRssBefore": 86016000,
+        "memRssAfter": 95272960,
+        "memRssDelta": 9256960,
+        "bytesPerSec": 646114.286,
+        "envelopesPerSec": 1142.857
+      },
+      {
+        "connections": 500,
+        "connectionsEstablished": 500,
+        "envelopesPerConnection": 10,
+        "envelopesSent": 5000,
+        "forwarded": 5000,
+        "allForwarded": true,
+        "totalBytes": 2887090,
+        "forwardedBytes": 2831700,
+        "durationSec": 4.478,
+        "cpuMs": 4453,
+        "memRssBefore": 100179968,
+        "memRssAfter": 111583232,
+        "memRssDelta": 11403264,
+        "bytesPerSec": 632358.196,
+        "envelopesPerSec": 1116.57
+      }
+    ],
+    "r4_baseline": [
+      {
+        "connections": 50,
+        "connectionsEstablished": 50,
+        "envelopesPerConnection": 10,
+        "envelopesSent": 500,
+        "forwarded": 500,
+        "allForwarded": true,
+        "totalBytes": 286690,
+        "forwardedBytes": 281200,
+        "durationSec": 0.465,
+        "cpuMs": 454,
+        "memRssBefore": 80367616,
+        "memRssAfter": 82755584,
+        "memRssDelta": 2387968,
+        "bytesPerSec": 604731.183,
+        "envelopesPerSec": 1075.269
+      },
+      {
+        "connections": 200,
+        "connectionsEstablished": 200,
+        "envelopesPerConnection": 10,
+        "envelopesSent": 2000,
+        "forwarded": 2000,
+        "allForwarded": true,
+        "totalBytes": 1152790,
+        "forwardedBytes": 1130700,
+        "durationSec": 1.75,
+        "cpuMs": 1750,
+        "memRssBefore": 86016000,
+        "memRssAfter": 95272960,
+        "memRssDelta": 9256960,
+        "bytesPerSec": 646114.286,
+        "envelopesPerSec": 1142.857
+      },
+      {
+        "connections": 500,
+        "connectionsEstablished": 500,
+        "envelopesPerConnection": 10,
+        "envelopesSent": 5000,
+        "forwarded": 5000,
+        "allForwarded": true,
+        "totalBytes": 2887090,
+        "forwardedBytes": 2831700,
+        "durationSec": 4.478,
+        "cpuMs": 4453,
+        "memRssBefore": 100179968,
+        "memRssAfter": 111583232,
+        "memRssDelta": 11403264,
+        "bytesPerSec": 632358.196,
+        "envelopesPerSec": 1116.57
+      }
+    ],
+    "r4_produced": true
+  },
+  "honestBoundaries": [
+    "中继是中心化点：只见明文、不可伪造（验签必败）、可选择性丢弃——信任边界 = 不可信但不可作恶，作恶=审查可被检测",
+    "打洞未做（决策见 NAT-PUNCHING-DECISION.md）",
+    "本机回环测试（127.0.0.1），真实跨 NAT 实测待公网环境",
+    "无激励基线是单机模拟（中继与客户端同进程，CPU/内存含客户端开销），公网带宽成本另算"
+  ]
+}

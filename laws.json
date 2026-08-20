@@ -1,0 +1,9 @@
+{
+  "rules": [
+    { "id": "SIG_REQUIRED",   "check": "sig 验签通过",                     "severity": "reject" },
+    { "id": "BOUNDARY_VALID", "check": "boundary ∈ {L2a,L1,L0}",           "severity": "reject" },
+    { "id": "SUMMARY_BOUND",  "check": "report.summary 字符数 ≤ 100",      "severity": "reject" },
+    { "id": "EVIDENCE_L2A",   "check": "boundary=L2a ⇒ evidence.devices 非空", "severity": "reject" },
+    { "id": "FROM_KNOWN",     "check": "from.nodeId 在登记册或首封自注册",   "severity": "warn" }
+  ]
+}
