@@ -742,6 +742,14 @@ export function createMembershipNode({
       return { pass: false, reason: `safety: parentHash does not extend local highest QC (${baseline})` };
     }
 
+    // P2（lock-on-vote）：提案必须扩展当前 lock（lock 为 null=创世则跳过；与 phase5 同步）。
+    if (node.lock != null && !node.isDescendant(proposal.parentHash, node.lock.blockHash)) {
+      return {
+        pass: false,
+        reason: `safety: proposal does not extend lock (${node.lock.blockHash})`,
+      };
+    }
+
     // 窄车道交易逐笔校验：commit 走 nonce 双花；membership 走 nonce + 军法/op 谓词。
     const txs = proposal.txs;
     if (!Array.isArray(txs)) return { pass: false, reason: 'safety: proposal.txs must be an array' };
@@ -840,6 +848,21 @@ export function createMembershipNode({
       node.votedViews.add(v);
       node.view = Math.max(node.view, v);
       node.touch();
+
+      // P2（lock-on-vote）：投票成功即把 lock 推进到所投区块的父块（与 phase5 同步）。
+      if (proposal.parentHash === GENESIS_HASH) {
+        node.lock = null; // 创世提案：父块即创世，lock 保持/置创世（null 等价）。
+      } else {
+        let parentView = null;
+        if (proposal.justify != null) {
+          parentView = proposal.justify.view;
+        } else {
+          const parentBlk = node.blocks.get(proposal.parentHash);
+          if (parentBlk) parentView = parentBlk.view;
+        }
+        node.lock = { blockHash: proposal.parentHash, view: parentView };
+      }
+
       const voteTarget = { view: proposal.view, blockHash: proposal.blockHash, parentHash: proposal.parentHash };
       const sig = signString(canonicalJson(voteTarget), node.privateKey);
       return { voted: true, vote: { nodeId: node.nodeId, pubKey: node.pubKey, sig } };
@@ -940,6 +963,9 @@ export function createMembershipNode({
     node.pendingChanges = [];
     node.membershipLog = [];
     node.rotateStash = null;
+    // 诚实声明：重启后 lock 从已提交前缀重建，锁不持久化（与 PROOFS.md A4 边界一致）。
+    // baseRestore 已重置为 null，此处显式声明意图（置 null 等价锁创世）。
+    node.lock = null;
     replayMembership();
     node.touch();
     return { ...base, membershipReplayed: true, rosterSize: node.roster.length, expelled: [...node.expelled] };
