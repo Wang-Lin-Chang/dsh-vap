@@ -276,6 +276,7 @@ export function createNode({
     qcByView: new Map(),        // view -> QC
     qcByBlockHash: new Map(),   // blockHash -> QC
     activeProposal: null,
+    lock: null,                // P2 lock-on-vote：{ blockHash, view }；null 等价锁创世
 
     // 提交与账本状态
     committed: [],              // 已提交区块（按提交顺序）
@@ -429,6 +430,15 @@ export function createNode({
       };
     }
 
+    // P2（lock-on-vote）：提案必须扩展当前 lock（lock 为 null=创世则跳过）。
+    // 用 parentHash 回溯（提案自身尚未入 blocks）：lock.blockHash 须是 parentHash 的祖先或相等。
+    if (node.lock != null && !node.isDescendant(proposal.parentHash, node.lock.blockHash)) {
+      return {
+        pass: false,
+        reason: `safety: proposal does not extend lock (${node.lock.blockHash})`,
+      };
+    }
+
     const ds = checkDoubleSpend(node, proposal.txs);
     if (ds) return { pass: false, reason: ds };
     return { pass: true, reason: null };
@@ -445,6 +455,21 @@ export function createNode({
     node.votedViews.add(v);
     node.view = Math.max(node.view, v);
     node.touch();
+
+    // P2（lock-on-vote）：投票成功即把 lock 推进到所投区块的父块。
+    // 父块视图取携带 QC（justify = 父块 QC）的 view；无 justify 且非创世时查本地父块。
+    if (proposal.parentHash === GENESIS_HASH) {
+      node.lock = null; // 创世提案：父块即创世，lock 保持/置创世（null 等价）。
+    } else {
+      let parentView = null;
+      if (proposal.justify != null) {
+        parentView = proposal.justify.view;
+      } else {
+        const parentBlk = node.blocks.get(proposal.parentHash);
+        if (parentBlk) parentView = parentBlk.view;
+      }
+      node.lock = { blockHash: proposal.parentHash, view: parentView };
+    }
 
     const voteTarget = { view: proposal.view, blockHash: proposal.blockHash, parentHash: proposal.parentHash };
     const sig = signString(canonicalJson(voteTarget), privateKey);
@@ -488,6 +513,23 @@ export function createNode({
     node.qcByBlockHash.set(qc.blockHash, qc);
     node.touch();
     return { ok: true, qc };
+  };
+
+  // P2（lock-on-vote）回溯 helper：判定 blockHash 是否扩展 ancestorHash（即 ancestorHash 在
+  // blockHash 的祖先链上，含相等）。沿 blocks 的 parentHash 链回溯；环保护：深度上限 1000，
+  // 超限视为不扩展（防环/防 DoS，绝不挂死）。ancestorHash 为 null/GENESIS_HASH 视为创世锁。
+  node.isDescendant = function isDescendant(blockHash, ancestorHash) {
+    if (ancestorHash == null || ancestorHash === GENESIS_HASH) return true;
+    if (blockHash === ancestorHash) return true;
+    let cursor = blockHash;
+    for (let depth = 0; depth < 1000; depth++) {
+      if (cursor === ancestorHash) return true;
+      if (cursor === GENESIS_HASH) return false;
+      const blk = node.blocks.get(cursor);
+      if (!blk) return false;
+      cursor = blk.parentHash;
+    }
+    return false; // 环保护：超过深度上限视为不扩展
   };
 
   // 找"已认证子块"：父指针为 parentHash 且自身有 QC（跳过无 QC 的分叉块）。
@@ -608,6 +650,8 @@ export function createNode({
     node.pendingTxs = [];
     node.pendingNonces.clear();
     node.activeProposal = null;
+    // 锁不持久化：重启后 lock 从已提交前缀重建（置 null 诚实声明，等价锁创世）。
+    node.lock = null;
     // M12：blocks / qcByView / qcByBlockHash / highestQC 从已提交前缀回放重算。
     node.blocks.clear();
     node.qcByView.clear();
