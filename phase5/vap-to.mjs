@@ -689,15 +689,21 @@ export function createNode({
 
   // 视图切换（P4）：超时 → v+1，携带本地 highestQC（防安全倒退）。
   // V4（第三层活性修复）：扩展为 view-change 流程 —— 生成 view-change 消息
-  // { nodeId, view, highestQC } 并登记本地 viewChanges（供新 leader 聚合）。
+  // { nodeId, view, highestQC, sig } 并登记本地 viewChanges（供新 leader 聚合）。
   // 返回保留既有 { prevView, newView, carriedQC } 字段（向后兼容），另增 viewChange。
   node.onTimeout = function onTimeout() {
     const prevView = node.view;
     node.view = prevView + 1;
-    const vc = {
+    const vcBase = {
       nodeId: node.nodeId,
       view: node.view,
       highestQC: node.highestQC, // 本地最高 QC（无 QC 时 null = 创世锚）
+    };
+    // 复验发现 #3 加固：view-change 消息签名——绑定 (nodeId, view, 携带 QC 的标识)，
+    // 防拜占庭节点冒充诚实节点提交低 QC/回放 view-change 压低聚合锚。
+    const vc = {
+      ...vcBase,
+      sig: signString(canonicalJson(viewChangeTarget(vcBase)), node.privateKey),
     };
     if (!node.viewChanges.has(node.nodeId)) node.viewChanges.set(node.nodeId, new Map());
     node.viewChanges.get(node.nodeId).set(node.view, vc);
@@ -705,9 +711,20 @@ export function createNode({
     return { prevView, newView: node.view, carriedQC: node.highestQC, viewChange: vc };
   };
 
+  // view-change 签名对象：QC 用 (view, blockHash) 标识降维（sigs 数组不参与签名）。
+  function viewChangeTarget(vc) {
+    return {
+      nodeId: vc.nodeId,
+      view: vc.view,
+      qcView: vc.highestQC ? vc.highestQC.view : null,
+      qcBlockHash: vc.highestQC ? vc.highestQC.blockHash : null,
+    };
+  }
+
   // V4（第三层活性修复）view-change 收集：接收并校验其它节点的 view-change 消息
-  // { nodeId, view, highestQC }。校验：nodeId 在 roster、view 为非负整数、
-  // highestQC 为空或 verifyQC 通过（除名者拒收）。通过后登记进本地 viewChanges。
+  // { nodeId, view, highestQC, sig }。校验：nodeId 在 roster、view 为非负整数、
+  // 消息签名有效（绑定发送方身份）、highestQC 为空或 verifyQC 通过（除名者拒收）。
+  // 通过后登记进本地 viewChanges。
   node.receiveViewChange = function receiveViewChange(vc) {
     if (!vc || typeof vc !== 'object') return { ok: false, reason: 'receiveViewChange: malformed view-change' };
     if (typeof vc.nodeId !== 'string' || !node.peerMap.has(vc.nodeId)) {
@@ -718,6 +735,10 @@ export function createNode({
     }
     const v = Number(vc.view);
     if (!Number.isInteger(v) || v < 0) return { ok: false, reason: 'receiveViewChange: invalid view' };
+    // 签名校验：绑定 (nodeId, view, 携带 QC 标识)——伪造/篡改的 view-change 拒收。
+    if (typeof vc.sig !== 'string' || !verifyString(canonicalJson(viewChangeTarget(vc)), node.peerMap.get(vc.nodeId), vc.sig)) {
+      return { ok: false, reason: 'receiveViewChange: invalid signature' };
+    }
     if (vc.highestQC != null && !node.verifyQC(vc.highestQC)) {
       return { ok: false, reason: 'receiveViewChange: invalid carried QC' };
     }
