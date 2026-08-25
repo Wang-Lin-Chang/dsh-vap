@@ -21,8 +21,10 @@ import { execFileSync } from 'node:child_process';
 const checks = [];
 const log = (r) => checks.push(r);
 
-// 1) systemd 服务状态
+// 1) systemd 服务状态（VAP_MONITOR_SKIP 可跳过本机不承载的服务，如第二站点的 vap-files）
+const skipSvc = new Set(String(process.env.VAP_MONITOR_SKIP || '').split(',').map((s) => s.trim()).filter(Boolean));
 for (const svc of ['vap-relay', 'vap-stun', 'vap-files']) {
+  if (skipSvc.has(svc)) continue;
   try {
     const out = execFileSync('systemctl', ['is-active', svc], { encoding: 'utf8' }).trim();
     log({ check: `service:${svc}`, ok: out === 'active', detail: out });

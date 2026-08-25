@@ -355,7 +355,7 @@ result.pass = !!(result.stun && result.exchanged && result.directEstablished && 
 const json = JSON.stringify(result, null, 2);
 if (args.out) fs.writeFileSync(args.out, json + '\n');
 process.stdout.write(json + '\n');
-relay.close();
+for (const rc of relayClients) rc.close(); // R1：关闭全部中继连接（只关第一个会挂住事件循环，进程不退出）
 puncher.close();
 if (v6Puncher) v6Puncher.close();
 process.exitCode = result.pass ? 0 : 1;
