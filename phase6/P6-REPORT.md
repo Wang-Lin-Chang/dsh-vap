@@ -67,6 +67,8 @@ node phase6/experiments/phase6-experiment.mjs    # D1-D5 + 结构化 JSON + 硬�
 
 装置：n=4 起，f=floor((n-1)/3)，QC 门槛 2f+1，commit 规则 HotStuff 3-chain。
 
+> **历史注（2026-08-25 Quorum 修正）**：本报告记录的 threshold 值（D1 的 3、D2 的 1）是装置当时的实现（`threshold = 2f+1`）下的历史事实。该公式经 TLC 实测在 n>3f+1 时存在「同视图双 QC」安全反例，已修正为 `max(2f+1, ⌈2n/3⌉)`（见 PROOFS.md §4.1）——修正后 D1 场景（n=5,f=1）应为 threshold=4。历史数字不改，如实标注。
+
 | 实验 | 结果 | 判据 |
 |---|---|---|
 | **D1 加入生效** | 资格凭证 + 3/4 背书 → join 提交 → h+2 后 roster=5（f=1, threshold=3）→ 新节点 n5 上链后与原有节点提交前缀一致、5 节点继续推进 | `rosterAfter=5` `n5Agrees=true` `fiveNodeConsensusAdvanced=true` |

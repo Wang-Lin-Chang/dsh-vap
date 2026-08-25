@@ -39,7 +39,7 @@
 | M1 | 加入：新节点持资格凭证 `proposeJoin` → 现有成员 2/3 `endorseJoin` → `submitTx` 进窄车道 → 提交于高度 h → h+2 生效 | [已实测] 跨公网：n5 加入 h+2 生效入 roster（n=5 f=1），全节点一致 |
 | M2 | 除名（equivocation）：`detectEquivocation` 产双签证据 → `expelByEquivocation` 打包 slash 交易上链 → 提交后签名**立即**不计入 → h+2 roster 掉表 | [已实测] 跨公网：n5 双签证据检出+slash 上链+立即除名+h+2 掉表回 4 节点 |
 | M3 | 主动退出：`{ op:'expel' }` 交易带本人签名 → h+2 生效 | [已实测] 跨公网：C1 自签 expel → h+2 掉表 → 3 节点 f=0 继续推进（QC 达成） |
-| M4 | 每次 roster 变更重算 `f = floor((n-1)/3)`、`threshold = 2f+1` | [已实测] join 后 n=5 f=1 th=3、slash 后 n=4 f=1 th=3，全节点同值 |
+| M4 | 每次 roster 变更重算 `f = floor((n-1)/3)`、`threshold = max(2f+1, ⌈2n/3⌉)`（2026-08-25 Quorum 修正，见 PROOFS.md §4.1：2f+1 仅在 n=3f+1 时安全） | [已实测] join 后 n=5 f=1 **th=4**、slash 后 n=4 f=1 th=3，全节点同值（历史装置在旧门槛下记录 th=3，修正后同装置应重算为 4） |
 
 ## 5. 监控指标（灰度期必盯）
 

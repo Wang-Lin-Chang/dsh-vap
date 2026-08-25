@@ -164,11 +164,8 @@ TLA+ 规格经 TLC 2.19 真实运行（老服务器 2 核/3.6GiB）：
 1. **多笔变更同块**：M3 覆盖单笔变更；同块内多次 join/expel 的 A5 重叠显式校验与完整证明待补；
 2. **机器检查**：本证明待 Coq/Lean 形式化（手工证明 → 机器证明）；
 3. **f_old ≠ f_new**：M2 仅证等规模变更的负结果；异规模变更的诚实交集下界公式待补；
-4. **活性恢复（V2，进行中）**：TLC 实证活性缺口 = 缺「扩展本地最高 QC」baseline 检查（诚实节点跳跃投票）。
-   **第一步已落地**（2026-08-25）：vote 前置 baseline 校验（提案父块必须扩展本地最高 QC，空基线仅允许 parent=GENESIS）——
-   实现（phase5/vap-to.mjs safetyRule）+ TLA+ 规格（BaselineOK/HighestCertified）双侧同步；
-   TLC 实证：§5.2 跳跃投票反例**已消除**，安全回归完整穷举 PASS（64,260 状态）。
-   **剩余两层缺口（TLC 新反例，如实记录）**：
-   a) 「父块为最高已认证块的未认证后代」仍可被投 → 需 `Certified(parent)`（提案携带父块 QC，即 justify 的显式建模）；
-   b) 「父块=Genesis 的高视图块」仍可被投（拜占庭 leader 持久分叉）→ 需 view-change/new-view 携带最高 QC 消息协议 + 部分同步（GST）假设。
-   baseline 检查是必要第一步但非充分条件；完整活性（EventuallyCommit）在两层缺口补齐前**不声称已修复**。
+4. **活性恢复（V2，三层全部落地，2026-08-25）**：TLC 实证活性缺口经三层修复：
+   - **第一层 baseline 检查**：vote 前置「提案父块必须扩展本地最高 QC」（空基线仅允许 parent=GENESIS）——消除「跳跃投票」反例；TLC 安全回归 64,260 状态 PASS。
+   - **第二层 Certified(parent)**：vote 前置「父块必须已认证」（提案携带父块 QC = justify 显式建模）——消除「投未认证后代」反例；TLC 安全回归 64,260 状态 PASS。
+   - **第三层 view-change/new-view 协议**：view-change 消息携带本地最高 QC（签名绑定），新 leader 聚合取最高 QC 为锚——消除「跳视图死锁」；TLC：**稳定 leader + GST 下 EventuallyCommit PASS（62,064 状态）**，安全回归 55,188 状态 PASS。
+   - **最终边界（如实）**：完全对抗模型 EventuallyCommit 仍 FAIL（496,139 状态）——拜占庭 leader 反复提父=Genesis 高视图块 + equivocate，属 FLP 下界（完全异步下无协议可消除），实现侧由 detectEquivocation 除名兜底。**「稳定 leader + 部分同步」下的活性已机器验证；完全对抗下的活性不可达是理论边界，非缺陷。**
