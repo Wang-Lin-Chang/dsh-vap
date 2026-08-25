@@ -1,6 +1,33 @@
 # Changelog
 
 本项目版本遵循「内环 / 中环 / 外环」的能力推进节奏；所有能力都带实验装置编号与对照组。
+版本号遵循 SemVer 2.0.0（MAJOR.MINOR.PATCH）：MAJOR 为不兼容变更、MINOR 为向后兼容新增能力、PATCH 为向后兼容修复，1.0.0 之前接口仍可能调整。
+
+## [0.2.1] - 2026-08-25
+
+生产级加固批次：把「能跑」补成「能公开跑」——安全（S1-S12）、可靠性（R2/R3）、
+Phase 3/5 共识加固、中继 TLS 与生产监控全部落地并带回归。
+
+### 安全（S1-S12）
+
+- S1 工作区凭据暴露自查并轮换；S2 STUN 反射防护；S3 打洞握手 token 认证。
+- S4/S5 中继注册认证（pubKey 绑定 / from 绑定 / 带宽上限 / 死连接顶替仍须认证）。
+- S6 中继 TLS（自签 CA 引导 `bin/vap-gencert.sh`）；S7/S8 网关出站认证 / 入站限速 / inbox 配额。
+- S9 nonce 放宽 16~32 位 hex 兼容；S10 私钥口令加密落盘；S11 canonicalJson 深度/循环防护；
+  S12 registry 并发写锁互斥。
+
+### 可靠性（R2/R3）
+
+- R2 生产监控：`ops/monitor.mjs` + systemd timer（服务/磁盘/内存/relay TCP/STUN UDP 等指标）。
+- R3 账本损坏容忍：尾部半行损坏 → restore 截断到一致前缀，不崩溃（Phase 5）。
+
+### 共识加固（Phase 3 / Phase 5）
+
+- Phase 3 分布式 2/3 背书与 Phase 5 锁步 QC 链的生产级加固回归补强（见 `phase3/P3-REPORT.md`、`phase5/P5-REPORT.md`）。
+
+### TLS 与监控
+
+- 中继 TLS 传输链路（S6）与生产监控 timer 样板并入 `systemd/` 与 `SERVICES.md`。
 
 ## [未发布] —— 用户验收精修批次（CLI 体验）
 

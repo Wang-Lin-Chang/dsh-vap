@@ -451,6 +451,68 @@ test('restore recovers committed prefix and verifies the hash chain', () => {
 });
 
 // ---------------------------------------------------------------------------
+// P4 账本快照（生产级加固）：每 100 块落快照，restore 用快照前缀重建
+// ---------------------------------------------------------------------------
+
+test('P4: 提交 105 块生成快照，重启 restore 用快照前缀且账本一致', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-to-p4-'));
+  const keys = makeKeys();
+  const peers = [{ nodeId: 'n1', pubKey: keys.pubKey }];
+  const node = createNode({ nodeId: 'n1', keyPair: keys, n: 1, f: 0, peers, ledgerDir: dir });
+  // 单节点：每轮 propose→vote→collectQC→commitCheck。3-chain 提交滞后 2 个 view：
+  // 要 105 块提交需推 107 轮（view 0..106 → 提交 105 块）。
+  for (let v = 0; v < 107; v += 1) {
+    node.submitTx(tx({ nonce: `p4-${v}` }));
+    const pr = node.propose(v);
+    assert.ok(pr.proposal, `view ${v} propose: ${JSON.stringify(pr)}`);
+    const vr = node.vote(pr.proposal);
+    assert.equal(vr.voted, true, vr.reason);
+    const qc = node.collectQC([vr.vote]);
+    assert.equal(qc.ok, true, JSON.stringify(qc));
+    node.commitCheck();
+  }
+  assert.equal(node.committedHeight, 105);
+  const snapFile = path.join(dir, 'ledger-n1.jsonl.snapshot.json');
+  assert.equal(fs.existsSync(snapFile), true, '快照文件应在 100 块时生成');
+  const digestBefore = node.committedDigest();
+
+  // 重启：快照前缀 + 尾部 5 行回放
+  const fresh = createNode({ nodeId: 'n1', keyPair: keys, n: 1, f: 0, peers, ledgerDir: dir });
+  const r = fresh.restore();
+  assert.equal(r.snapUsed, true, 'restore 必须使用快照');
+  assert.equal(r.restored, 105, '恢复 105 块');
+  assert.equal(r.truncatedAt, null);
+  assert.deepEqual(fresh.committedDigest(), digestBefore, '快照恢复后账本一致');
+  assert.equal(fresh.committedHeight, 105);
+});
+
+test('P4: 快照损坏回退全量验签回放（不牺牲安全性）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-to-p4b-'));
+  const keys = makeKeys();
+  const peers = [{ nodeId: 'n1', pubKey: keys.pubKey }];
+  const node = createNode({ nodeId: 'n1', keyPair: keys, n: 1, f: 0, peers, ledgerDir: dir });
+  for (let v = 0; v < 107; v += 1) {
+    node.submitTx(tx({ nonce: `p4b-${v}` }));
+    const pr = node.propose(v);
+    const vr = node.vote(pr.proposal);
+    node.collectQC([vr.vote]);
+    node.commitCheck();
+  }
+  const snapFile = path.join(dir, 'ledger-n1.jsonl.snapshot.json');
+  assert.equal(fs.existsSync(snapFile), true);
+  // 破坏快照：篡改第二个块的 parentHash
+  const snap = JSON.parse(fs.readFileSync(snapFile, 'utf8'));
+  snap.blocks[1].parentHash = 'TAMPERED';
+  fs.writeFileSync(snapFile, `${JSON.stringify(snap)}\n`, 'utf8');
+
+  const fresh = createNode({ nodeId: 'n1', keyPair: keys, n: 1, f: 0, peers, ledgerDir: dir });
+  const r = fresh.restore();
+  assert.equal(r.snapUsed, false, '损坏快照必须被拒用，回退全量验签回放');
+  assert.equal(r.restored, 105, '全量回放仍恢复 105 块');
+  assert.equal(fresh.committedHeight, 105);
+});
+
+// ---------------------------------------------------------------------------
 // lock-on-vote 回归（P2）
 // ---------------------------------------------------------------------------
 

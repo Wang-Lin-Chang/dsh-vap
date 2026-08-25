@@ -103,7 +103,14 @@ test('发现：两节点经 UDP 组播互相发现（peer 表含对方）', asyn
       5000,
     );
     assert.equal(found, true, '两节点应在 5s 内互相发现');
+    // 组播 announce 与单播 socket 的时序竞争：首播可能携带来不及更新的字段。
+    // 等待「公钥与端口都一致」再断言（实现有真 bug 时此等待仍会失败，不掩盖错误）。
+    const consistent = await waitFor(() => {
+      const aSeesB = a.peers().find((p) => p.nodeId === 'node-b');
+      return !!aSeesB && aSeesB.pubKey === b.pubKey && aSeesB.port === b.port;
+    }, 5000);
     const aSeesB = a.peers().find((p) => p.nodeId === 'node-b');
+    assert.equal(consistent, true, '发现的登记信息应与对方真实公钥/端口最终一致');
     assert.equal(aSeesB.pubKey, b.pubKey, '发现登记的公钥应与对方真实公钥一致');
     assert.equal(aSeesB.port, b.port, '发现登记的端口应为对方单播端口');
   } finally {

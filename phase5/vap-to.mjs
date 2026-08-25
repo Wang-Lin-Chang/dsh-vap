@@ -281,6 +281,7 @@ export function createNode({
     blocks: new Map(),          // blockHash -> proposal
     qcByView: new Map(),        // view -> QC
     qcByBlockHash: new Map(),   // blockHash -> QC
+    childIndex: new Map(),      // P3：parentHash -> blockHash（已认证子索引，commitCheck O(B) 关键）
     activeProposal: null,
     lock: null,                // P2 lock-on-vote：{ blockHash, view }；null 等价锁创世
 
@@ -517,33 +518,52 @@ export function createNode({
     node.highestQC = qc;
     node.qcByView.set(qc.view, qc);
     node.qcByBlockHash.set(qc.blockHash, qc);
+    indexCertifiedChild(node.blocks.get(qc.blockHash)); // P3：维护已认证子索引
     node.touch();
     return { ok: true, qc };
   };
 
   // P2（lock-on-vote）回溯 helper：判定 blockHash 是否扩展 ancestorHash（即 ancestorHash 在
-  // blockHash 的祖先链上，含相等）。沿 blocks 的 parentHash 链回溯；环保护：深度上限 1000，
-  // 超限视为不扩展（防环/防 DoS，绝不挂死）。ancestorHash 为 null/GENESIS_HASH 视为创世锁。
+  // blockHash 的祖先链上，含相等）。沿 blocks 的 parentHash 链回溯。
+  // P5（生产级加固）：固定深度上限 1000 在长链下会把诚实提案误判「不扩展」→ 活性隐患。
+  // 改为「祖先方向 view 严格递减」判环 + 步数上限 = blocks.size + 2（链长不可能超过块总数）。
   node.isDescendant = function isDescendant(blockHash, ancestorHash) {
     if (ancestorHash == null || ancestorHash === GENESIS_HASH) return true;
     if (blockHash === ancestorHash) return true;
+    const ancestorBlk = node.blocks.get(ancestorHash);
+    const ancestorView = ancestorBlk ? Number(ancestorBlk.view) : Number.POSITIVE_INFINITY;
     let cursor = blockHash;
-    for (let depth = 0; depth < 1000; depth++) {
+    let prevView = Number.POSITIVE_INFINITY;
+    let steps = 0;
+    const maxSteps = node.blocks.size + 2;
+    while (steps <= maxSteps) {
       if (cursor === ancestorHash) return true;
       if (cursor === GENESIS_HASH) return false;
       const blk = node.blocks.get(cursor);
       if (!blk) return false;
+      const v = Number(blk.view);
+      if (v < ancestorView) return false; // 已低于祖先 view：不可能再回溯到祖先
+      if (v >= prevView) return false;    // 环保护：祖先方向 view 必须严格递减
+      prevView = v;
       cursor = blk.parentHash;
+      steps += 1;
     }
-    return false; // 环保护：超过深度上限视为不扩展
+    return false; // 超过步数上限（块总数+2）视为不扩展——正常链长不可能触及
   };
+
+  // P3（生产级加固）：已认证子索引。父块最多一个「已认证子」（同 view 唯一 leader 提案），
+  // childIndex 由 collectQC 成功与 restore 回放时维护，把 commitCheck 的
+  // findCertifiedChild 从 O(B) 全表扫描降为 O(1)，整函数 O(B²) → O(B)。
+  function indexCertifiedChild(blk) {
+    if (blk && blk.blockHash && blk.parentHash && node.qcByBlockHash.has(blk.blockHash)) {
+      node.childIndex.set(blk.parentHash, blk.blockHash);
+    }
+  }
 
   // 找"已认证子块"：父指针为 parentHash 且自身有 QC（跳过无 QC 的分叉块）。
   function findCertifiedChild(parentHash) {
-    for (const [, blk] of node.blocks) {
-      if (blk.parentHash === parentHash && node.qcByBlockHash.has(blk.blockHash)) return blk;
-    }
-    return null;
+    const h = node.childIndex.get(parentHash);
+    return h ? node.blocks.get(h) || null : null;
   }
 
   // 3-chain 提交：B 有 QC 且子、孙各有 QC → 提交 B（子/孙必须自身有 QC，防分叉块遮蔽）。
@@ -592,8 +612,47 @@ export function createNode({
       if (tx && tx.type === 'commit') node.seenNonces.add(`${tx.from}:${tx.nonce}`);
     }
     appendLine(node.ledgerFile, JSON.stringify(record));
+    // P4（生产级加固）：每 100 块落一次快照，restore 从快照前缀重建、跳过逐块验签。
+    if (node.committedHeight % SNAPSHOT_EVERY === 0) writeSnapshot();
     node.touch();
   };
+
+  // P4：周期快照 { v, height, lastCommittedHash, blocks }。信任域 = 本地磁盘（与账本同级，
+  // 威胁模型 E0-E3 不覆盖磁盘，E4 物理接触不在威胁模型内）。restore 用快照时对块链
+  // 重算 blockHash 校验链完整性（防快照内损坏），但跳过逐块 Ed25519 验签（O(L·验签) → O(L·哈希)）。
+  const SNAPSHOT_EVERY = 100;
+  function snapshotPath() {
+    return `${node.ledgerFile}.snapshot.json`;
+  }
+  function writeSnapshot() {
+    const snap = {
+      v: 1,
+      height: node.committedHeight,
+      lastCommittedHash: node.lastCommittedHash,
+      blocks: node.committed.map((b) => ({
+        view: b.view, leader: b.leader, parentHash: b.parentHash,
+        blockHash: b.blockHash, txs: b.txs || [], sig: b.sig,
+      })),
+    };
+    const tmp = `${snapshotPath()}.tmp-${crypto.randomBytes(4).toString('hex')}`;
+    try {
+      fs.writeFileSync(tmp, `${JSON.stringify(snap)}\n`, 'utf8');
+      fs.renameSync(tmp, snapshotPath());
+    } catch {
+      try { fs.unlinkSync(tmp); } catch { /* 尽力清理 */ }
+      // 快照失败不影响提交（下次周期重试）
+    }
+  }
+  function readSnapshot() {
+    try {
+      const snap = JSON.parse(fs.readFileSync(snapshotPath(), 'utf8'));
+      if (!snap || snap.v !== 1 || !Number.isInteger(snap.height) || snap.height <= 0) return null;
+      if (!Array.isArray(snap.blocks) || snap.blocks.length !== snap.height) return null;
+      return snap;
+    } catch {
+      return null;
+    }
+  }
 
   // 视图切换：v+1，携带本地 highestQC（防安全倒退）。
   node.onTimeout = function onTimeout() {
@@ -637,7 +696,31 @@ export function createNode({
     const blocks = [];
     let prevHash = GENESIS_HASH;
     let truncatedAt = null;
-    for (let i = 0; i < records.length; i++) {
+    let snapUsed = false;
+
+    // P4（生产级加固）：有有效快照时先用快照重建前缀——只重算哈希链完整性（不逐块验签），
+    // 把重启回放从 O(L·验签) 降为 O(L·哈希)。快照损坏/链断则回退全量验签回放（不牺牲安全性）。
+    const snap = readSnapshot();
+    if (snap && snap.height <= records.length && snap.blocks.length === snap.height) {
+      let snapOk = true;
+      for (let i = 0; i < snap.blocks.length; i += 1) {
+        const b = snap.blocks[i];
+        try {
+          const expectParent = i === 0 ? GENESIS_HASH : snap.blocks[i - 1].blockHash;
+          if (!b || b.parentHash !== expectParent) { snapOk = false; break; }
+          if (b.blockHash !== hashBlock(b)) { snapOk = false; break; }
+          blocks.push(b);
+        } catch { snapOk = false; break; }
+      }
+      if (snapOk && snap.lastCommittedHash === blocks[blocks.length - 1].blockHash) {
+        snapUsed = true;
+        prevHash = snap.lastCommittedHash;
+      } else {
+        blocks.length = 0; // 快照不可信：回退全量回放
+      }
+    }
+
+    for (let i = blocks.length; i < records.length; i++) {
       const rec = records[i];
       let bad = false;
       try {
@@ -697,6 +780,7 @@ export function createNode({
     node.blocks.clear();
     node.qcByView.clear();
     node.qcByBlockHash.clear();
+    node.childIndex.clear(); // P3：回放重建索引
     node.highestQC = null;
     for (const blk of blocks) {
       node.committed.push(blk);
@@ -715,6 +799,7 @@ export function createNode({
       };
       node.qcByView.set(blk.view, qc);
       node.qcByBlockHash.set(blk.blockHash, qc);
+      indexCertifiedChild(blk); // P3：回放时重建已认证子索引
       node.highestQC = qc;
       for (const tx of blk.txs || []) {
         if (tx && tx.type === 'commit') node.seenNonces.add(`${tx.from}:${tx.nonce}`);
@@ -724,7 +809,7 @@ export function createNode({
     node.lastCommittedHash = blocks.length ? blocks[blocks.length - 1].blockHash : GENESIS_HASH;
     if (blocks.length) node.view = Number(blocks[blocks.length - 1].view) + 1;
     node.touch();
-    return { restored: blocks.length, truncatedAt, blockHashes: blocks.map((b) => b.blockHash) };
+    return { restored: blocks.length, truncatedAt, snapUsed, blockHashes: blocks.map((b) => b.blockHash) };
   };
 
   // health()：共识节点真实状态（M11）。

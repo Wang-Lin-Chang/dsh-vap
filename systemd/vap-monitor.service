@@ -1,0 +1,10 @@
+[Unit]
+Description=VAP production monitor (services/disk/memory/relay/STUN)
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/node /home/ubuntu/dsh-vap/ops/monitor.mjs
+
+[Install]
+WantedBy=multi-user.target

@@ -432,12 +432,43 @@ function readRegistryMap(root) {
 }
 
 function writeRegistryEntry(root, nodeId, pubKey) {
-  // 并发（M4）：先读 → 合并 → 单次 atomicWrite（tmp+rename）。同进程内串行安全。
-  // TODO(M4-并发)：多进程同时登记仍可能后写覆盖先写（读-改-写非原子）；
-  // 批次 2 的写侧互斥（O_EXCL 锁文件或单写者进程）落地后本注释一并移除。
-  const reg = readRegistryMap(root);
-  reg[nodeId] = pubKey;
-  atomicWrite(path.join(root, 'registry.json'), `${JSON.stringify(reg, null, 2)}\n`);
+  // S12（生产级加固）：读-改-写加 O_EXCL 锁文件互斥（registry.lock）。
+  // 陈旧锁（>5s 未动）视为写进程已死，允许抢占——防崩溃残留锁永久阻塞登记。
+  withRegistryLock(root, () => {
+    const reg = readRegistryMap(root);
+    reg[nodeId] = pubKey;
+    atomicWrite(path.join(root, 'registry.json'), `${JSON.stringify(reg, null, 2)}\n`);
+  });
+}
+
+const REGISTRY_LOCK_STALE_MS = 5000;
+function withRegistryLock(root, fn) {
+  const lockPath = path.join(root, 'registry.lock');
+  ensureDir(root);
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    let fd;
+    try {
+      fd = fs.openSync(lockPath, 'wx'); // O_EXCL：锁不存在才创建
+      fs.writeFileSync(fd, `${Date.now()}`);
+      fs.closeSync(fd);
+      try {
+        return fn();
+      } finally {
+        try { fs.unlinkSync(lockPath); } catch { /* 已被抢占者清理 */ }
+      }
+    } catch (err) {
+      if (err && err.code !== 'EEXIST') throw err;
+      // 锁被他人持有：检查是否陈旧（持有者已死），陈旧则抢占；否则等 10ms 重试
+      try {
+        const st = fs.statSync(lockPath);
+        if (Date.now() - st.mtimeMs > REGISTRY_LOCK_STALE_MS) {
+          try { fs.unlinkSync(lockPath); } catch { /* 并发抢占竞争：下一轮重试 */ }
+        }
+      } catch { /* 锁刚被释放：下一轮重试 */ }
+      try { Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 10); } catch { /* 环境不支持则紧轮询 */ }
+    }
+  }
+  throw new Error(`registry lock timeout after 50 attempts (${lockPath})`);
 }
 
 // ---------------------------------------------------------------------------

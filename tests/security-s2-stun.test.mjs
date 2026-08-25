@@ -124,3 +124,27 @@ test('S2: createHolePuncher.discover 端到端（客户端带指纹）拿到映�
     p.close();
   } finally { killServer(child); }
 });
+
+test('S2: 畸形头长度字段被丢弃（fuzz 实证的反射放大面收口）', async () => {
+  const { child, port } = await startStunServer();
+  try {
+    const sock = dgram.createSocket('udp4');
+    let responses = 0;
+    sock.on('message', () => { responses += 1; });
+    await new Promise((r) => sock.bind(0, '127.0.0.1', r));
+    // 声明长度与实际不符：28B 实长但声明 0 / 20B 实长但声明 8 / 声明 0xFFFF
+    const cases = [
+      { declared: 0, base: appendFingerprint(bareBindingRequest()) },
+      { declared: 8, base: bareBindingRequest() },
+      { declared: 0xFFFF, base: bareBindingRequest() },
+    ];
+    for (const c of cases) {
+      const req = Buffer.from(c.base);
+      req.writeUInt16BE(c.declared, 2);
+      sock.send(req, port, '127.0.0.1');
+    }
+    await new Promise((r) => setTimeout(r, 1000));
+    sock.close();
+    assert.equal(responses, 0, '畸形长度请求一律不得被响应');
+  } finally { killServer(child); }
+});

@@ -18,6 +18,8 @@ import path from 'node:path';
 import net from 'node:net';
 import http from 'node:http';
 import dgram from 'node:dgram';
+import { spawn } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import {
   createVapNode,
@@ -734,6 +736,71 @@ test('R3: 账本尾部半行损坏 → restore 截断到一致前缀，不崩溃
   } finally {
     node.shutdown ? node.shutdown() : null;
   }
+});
+
+// ---------------------------------------------------------------------------
+// S10 私钥口令加密 + S12 registry 锁互斥（生产级加固批次）
+// ---------------------------------------------------------------------------
+
+import { saveKey, loadKey, encryptPrivateKey, decryptPrivateKey } from '../key-store.mjs';
+
+test('S10: 口令加密落盘——文件不含明文私钥，正确口令往返一致', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-s10-'));
+  const keys = makeKeys();
+  const file = saveKey(root, 'node-1', keys.privateKey, 'correct horse');
+  const raw = fs.readFileSync(file, 'utf8');
+  assert.ok(raw.includes('BEGIN VAP ENCRYPTED KEY'), '加密文件应有封装头');
+  assert.equal(raw.includes('PRIVATE KEY'), false, '落盘内容不得含明文私钥');
+  const loaded = loadKey(root, 'node-1', 'correct horse');
+  assert.ok(loaded, '正确口令应能加载');
+  assert.equal(
+    loaded.export({ type: 'pkcs8', format: 'der' }).toString('base64'),
+    keys.privateKey.export({ type: 'pkcs8', format: 'der' }).toString('base64'),
+    '加载的私钥与原始一致',
+  );
+});
+
+test('S10: 错误口令抛错；无口令加载加密文件抛错；明文兼容', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-s10b-'));
+  const keys = makeKeys();
+  saveKey(root, 'node-1', keys.privateKey, 'right pass');
+  assert.throws(() => loadKey(root, 'node-1', 'wrong pass'), '错误口令必须抛错');
+  assert.throws(() => loadKey(root, 'node-1'), '加密文件无口令加载必须抛错');
+  // 明文兼容：无口令 save/load 保持旧行为
+  saveKey(root, 'node-2', keys.privateKey);
+  const loaded = loadKey(root, 'node-2');
+  assert.ok(loaded, '明文兼容加载');
+  // 直接函数往返
+  const pem = keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString();
+  const enc = encryptPrivateKey(pem, 'pw');
+  assert.equal(decryptPrivateKey(enc, 'pw'), pem, 'encrypt/decrypt 往返');
+  assert.throws(() => decryptPrivateKey(enc, 'bad'), '错误口令解密抛错');
+});
+
+test('S12: 并发登记 registry——10 进程并发写不丢失条目', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-s12-'));
+  fs.writeFileSync(path.join(root, 'laws.json'), `${JSON.stringify(makeLaws(), null, 2)}\n`);
+  // 10 个子进程并发 register 不同 nodeId → registry.json 应含全部 10 条
+  const coreUrl = pathToFileURL(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'vap-core.mjs')).href;
+  const script = `
+    import { createVapNode } from ${JSON.stringify(coreUrl)};
+    const node = createVapNode({ nodeId: process.argv[1], root: process.argv[2] });
+    node.register();
+  `;
+  const procs = [];
+  for (let i = 0; i < 10; i += 1) {
+    procs.push(new Promise((resolve, reject) => {
+      const p = spawn(process.execPath, ['--input-type=module', '-e', script, `node-${i}`, root], { stdio: 'ignore' });
+      p.on('exit', (code) => (code === 0 ? resolve() : reject(new Error(`child exit ${code}`))));
+      p.on('error', reject);
+    }));
+  }
+  await Promise.all(procs);
+  const reg = JSON.parse(fs.readFileSync(path.join(root, 'registry.json'), 'utf8'));
+  for (let i = 0; i < 10; i += 1) {
+    assert.ok(reg[`node-${i}`], `registry 必须包含 node-${i}（锁互斥下不得互相覆盖）`);
+  }
+  assert.equal(Object.keys(reg).length, 10, 'registry 条目数 = 10');
 });
 
 test('M3 relay 注册白名单：越界 nodeId 拒绝注册（不进转发表）', async () => {

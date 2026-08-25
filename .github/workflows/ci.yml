@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: node ${{ matrix.node-version }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        node-version: [20, 22]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      # 零第三方依赖：不跑 npm install。node --check 只做语法检查，逐文件执行，
+      # 任何一个 .mjs 语法错误都会让该步失败（xargs 转发非零退出码）。
+      - name: Syntax-check every .mjs module
+        run: |
+          set -euo pipefail
+          find . -name '*.mjs' -not -path '*/node_modules/*' -print0 \
+            | xargs -0 -n1 node --check
+
+      # phase7 两个纯函数冒烟（零依赖，node 直接跑，失败以非零退出码终止 CI）。
+      - name: Phase 7 smoke — punch-chain
+        run: node phase7/punch-chain.smoke.mjs
+
+      - name: Phase 7 smoke — punch-plan
+        run: node phase7/punch-plan.smoke.mjs
+
+      - name: Full test suite (node --test)
+        run: node --test

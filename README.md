@@ -147,7 +147,9 @@ experiments/          # v0 / http / ring2 experiment devices
 ## Honest boundaries
 
 - **Small trust domain**: designed for a single-machine shared filesystem (extensible to a shared
-  disk / HTTP gateway); **public internet is untested** (see `phase6/DEPLOYMENT.md`).
+  disk / HTTP gateway). The relay path is now exercised across the public internet (Tailscale-
+  encrypted tunnel): cross-NAT 18/18 delivered-and-verified, 502.5 envelopes/sec relay throughput
+  — see `phase6/DEPLOYMENT.md`; the bare-IP direct path is still untested.
 - **Not Byzantine consensus at internet scale**: Ed25519 only proves "whoever holds the private
   key". The outer-ring consensus (Phase 5/6) tolerates `f` Byzantine nodes under `n = 3f+1`; a
   collusion of **≥ f+1** nodes crosses the mathematical boundary.

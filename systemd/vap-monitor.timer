@@ -1,0 +1,10 @@
+[Unit]
+Description=VAP production monitor timer (every 5 min)
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Unit=vap-monitor.service
+
+[Install]
+WantedBy=timers.target

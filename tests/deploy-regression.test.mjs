@@ -425,7 +425,9 @@ test('M13 signAuditTrail 缺省 trailDir 落在 os.tmpdir', () => {
 test('M10 package.json：name/version/type/bin/scripts 齐备', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(process.cwd(), 'package.json'), 'utf8'));
   assert.equal(pkg.name, 'dsh-vap');
-  assert.equal(pkg.version, '0.2.0');
+  // G3：版本号与 CHANGELOG 顶部条目保持一致（生产级加固批次 = 0.2.1）
+  const changelogTop = fs.readFileSync(path.join(process.cwd(), 'CHANGELOG.md'), 'utf8').split('\n').find((l) => /^## /.test(l));
+  assert.equal(pkg.version, /^## \[?v?([0-9.]+)/.exec(changelogTop || '## [0.0.0]')[1], `package.json version 必须等于 CHANGELOG 最新条目（${changelogTop}）`);
   assert.equal(pkg.type, 'module');
   assert.ok(pkg.engines && pkg.engines.node, 'engines.node declared');
   assert.ok(pkg.bin && pkg.bin['vap-relay'] && pkg.bin['vap-gateway'] && pkg.bin['vap-node'], 'three bin entries');

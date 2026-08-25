@@ -3,7 +3,7 @@
 // 用法：
 //   node phase7/punch-node.mjs --site A --stunHost <ip> --stunPort 3478 \
 //     --relayHost <ip> --relayPort <p> --localPort <p> [--classify true] \
-//     [--stun2Host <ip>] [--stun2Port <p>] [--tcpPort <p>] --out <json>
+//     [--stun2Host <ip>] [--stun2Port <p>] [--tcpPort <p>] [--relayCa <ca.pem>] --out <json>
 //
 // 流程（R6 起把 nat-classify + punch-plan/punch-chain 接入主流程）：
 //   1) 启动即 NAT 自分类 classifyNAT（mappingClass / filter / isPublic）；
@@ -56,14 +56,7 @@ const puncher = createHolePuncher({
 });
 await puncher.bind();
 
-const relay = createRelayClient({
-  host: args.relayHost,
-  port: Number(args.relayPort || 42050),
-  nodeId: 'P-' + site,
-  // pubKey 固定（site 派生）：relay 的顶替认证要求同名 nodeId 重连携带一致 pubKey，
-  // 随机 pubKey 会被 relay 拒注册 → 对端消息路由到死连接（relay 单向故障的根因之一）
-  pubKey: crypto.createHash('sha256').update('vap-punch-' + site).digest('base64'),
-});
+// relay 客户端集合在主流程区创建（R1 多中继冗余）
 
 const result = {
   site, generatedAt: new Date().toISOString(),
@@ -237,11 +230,32 @@ async function executePlan(plan, ctx) {
 // 主流程
 // ---------------------------------------------------------------------------
 
+// R1（多站点冗余）：--relayHost 支持逗号分隔列表，全部中继同时注册 + 冗余发 mapping。
+// 任一站点下线不影响交换（存活站点继续转发）；mapping 幂等，多路冗余无害。
+const relayHostList = String(args.relayHost || '').split(',').map((s) => s.trim()).filter(Boolean);
+const relays = relayHostList.length > 0 ? relayHostList : ['127.0.0.1'];
+const relayClients = relays.map((h) => createRelayClient({
+  host: h,
+  port: Number(args.relayPort || 42050),
+  nodeId: 'P-' + site,
+  pubKey: crypto.createHash('sha256').update('vap-punch-' + site).digest('base64'),
+  tlsOptions: args.relayCa ? { ca: fs.readFileSync(args.relayCa) } : null,
+}));
+const relay = relayClients[0]; // 首个为主（保留旧变量语义）；其余为冗余
+
 const mappingMsgs = [];
-relay.onEnvelope((m0) => {
-  const m = m0 && m0.envelope ? m0.envelope : m0;
-  if (m && m.type === 'mapping') mappingMsgs.push(m);
-});const directMsgs = [];
+for (const rc of relayClients) {
+  rc.onEnvelope((m0) => {
+    const m = m0 && m0.envelope ? m0.envelope : m0;
+    if (m && m.type === 'mapping') mappingMsgs.push(m);
+  });
+}
+function sendMapping() {
+  for (const rc of relayClients) {
+    rc.send(peerId, { type: 'mapping', from: site, mapping: result.stun, natClass: result.selfNat, ipv6: result.ipv6.self, v6Port: v6LocalPort, token: siteToken });
+  }
+}
+const directMsgs = [];
 const pushDirectMsg = (payload) => {
   try {
     const j = JSON.parse(payload.toString());
@@ -251,7 +265,7 @@ const pushDirectMsg = (payload) => {
 puncher.onDirect(pushDirectMsg);
 if (v6Puncher) v6Puncher.onDirect(pushDirectMsg);
 
-relay.connect();
+for (const rc of relayClients) rc.connect();
 await sleep(2000);
 
 // 1) NAT 自分类（启动即自判；失败不阻断，降级为 unknown 继续；瞬态丢包下重试 ≤3 次）
@@ -283,7 +297,7 @@ result.stun = await puncher.discover();
 // 3) 经中继交换 { mapping, natClass }（发 5 次 + 循环等 120s，容忍双方启动时序差）
 // 同时交换 v6Port（本端 v6 socket 端口 = localPort+10 的显式值；不能用映射端口推算——家庭 NAT 映射随机端口）
 for (let i = 0; i < 5; i += 1) {
-  relay.send(peerId, { type: 'mapping', from: site, mapping: result.stun, natClass: result.selfNat, ipv6: result.ipv6.self, v6Port: v6LocalPort, token: siteToken });
+  sendMapping();
   await sleep(500);
 }
 const swapT0 = Date.now();
@@ -308,7 +322,7 @@ while (Date.now() - swapT0 < 120000) {
     if (!gotPeerAt) gotPeerAt = Date.now();
     if (Date.now() - gotPeerAt >= 5000) break;
   }
-  relay.send(peerId, { type: 'mapping', from: site, mapping: result.stun, natClass: result.selfNat, ipv6: result.ipv6.self, v6Port: v6LocalPort, token: siteToken });
+  sendMapping();
   await sleep(1500);
 }
 

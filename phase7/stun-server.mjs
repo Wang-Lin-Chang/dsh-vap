@@ -71,6 +71,10 @@ let requests = 0;
 server.on('message', (msg, rinfo) => {
   // 20 字节头：type(2) len(2) magic(4) txid(12)
   if (msg.length < 20) return;
+  // fuzz P2 修复：头部声明长度必须与实际报文长度严格一致（UDP 一包一消息，
+  // 畸形长度字段一律丢弃——此前 1478 个畸形长度样本全被当合法请求响应，放大反射面）
+  const declaredLen = msg.readUInt16BE(2);
+  if (msg.length !== 20 + declaredLen) return;
   const type = msg.readUInt16BE(0);
   const magic = msg.subarray(4, 8);
   if (!magic.equals(MAGIC)) return; // 非 STUN

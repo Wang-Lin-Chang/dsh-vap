@@ -1,6 +1,6 @@
 {
   "name": "dsh-vap",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "VAP — 可验证智能体交互协议（零第三方依赖）",
   "type": "module",
   "engines": {
@@ -12,20 +12,34 @@
     "linux"
   ],
   "files": [
-    "README.md",
     "README.zh-CN.md",
-    "LICENSE",
     "CHANGELOG.md",
     "vap-spec.md",
-    "*.mjs",
+    "vap-core.mjs",
+    "vap-transport.mjs",
+    "key-store.mjs",
+    "logger.mjs",
+    "config.mjs",
+    "console-adapter.mjs",
+    "laws.json",
     "bin/",
     "bridges/",
-    "phase*/DESIGN.md",
-    "phase*/P*-REPORT.md",
-    "phase*/experiments/*.mjs",
-    "experiments/",
+    "phase0/",
+    "phase0.5/",
+    "phase1/",
+    "phase2/",
+    "phase3/",
+    "phase4/",
+    "phase5/",
+    "phase6/",
+    "phase7/",
     "tests/",
-    "laws.json"
+    "!**/_*",
+    "!**/experiments/**",
+    "!**/trails*/",
+    "!graynet-results/**",
+    "!keys/**",
+    "!**/*.pem"
   ],
   "bin": {
     "vap-relay": "bin/vap-relay.mjs",
@@ -33,6 +47,23 @@
     "vap-node": "bin/vap-node.mjs",
     "vap-send": "bin/vap-send.mjs"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Wang-Lin-Chang/dsh-vap.git"
+  },
+  "author": "Linchang Wang",
+  "keywords": [
+    "verifiable",
+    "agent",
+    "protocol",
+    "p2p",
+    "consensus",
+    "ed25519",
+    "nat-traversal",
+    "stun",
+    "relay",
+    "zero-dependency"
+  ],
   "scripts": {
     "test": "node --test",
     "relay": "node bin/vap-relay.mjs",
