@@ -33,6 +33,7 @@
     "phase5/",
     "phase6/",
     "phase7/",
+    "tlaplus/",
     "tests/",
     "!**/_*",
     "!**/experiments/**",

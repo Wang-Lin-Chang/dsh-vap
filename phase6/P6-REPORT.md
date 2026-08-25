@@ -26,7 +26,7 @@
 运行（在 dsh-vap/ 下）：
 
 ```
-node --test                                      # 全绿：256 条（含本阶段 8 条）
+node --test                                      # 全绿：254 条（含本阶段 8 条）
 node phase6/experiments/phase6-experiment.mjs    # D1-D5 + 结构化 JSON + 硬性自检（退出码 0）
 ```
 
