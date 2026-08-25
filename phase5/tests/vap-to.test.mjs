@@ -454,6 +454,116 @@ test('injectable clock drives timeout detection', () => {
 });
 
 // ---------------------------------------------------------------------------
+// V4（第三层活性修复）view-change / new-view 回归
+// ---------------------------------------------------------------------------
+
+test('V4 跳视图死锁恢复：新 leader 聚合 view-change 携带的最高 QC 作锚，恢复提交', () => {
+  const { nodes } = buildWorld();
+  round(nodes, 0); // B0@0 获 QC → 全员 highestQC = B0
+  const b0 = nodes[0].highestQC.blockHash;
+
+  // n1/n2/n3 跳视图到 3（各自发出 view-change，携带 highestQC = B0）。
+  for (const n of [nodes[0], nodes[1], nodes[2]]) {
+    while (n.view < 3) n.onTimeout();
+    const vc = n.viewChanges.get(n.nodeId).get(3);
+    assert.ok(vc, `${n.nodeId} 应已发出 view 3 的 view-change`);
+    assert.equal(vc.highestQC.blockHash, b0, `${n.nodeId} 的 view-change 应携带 B0 QC`);
+  }
+
+  // 新 leader n4（view 3）掉线错过 B0 QC → highestQC 陈旧（空）。
+  const n4 = nodes[3];
+  n4.highestQC = null;
+  n4.qcByView.clear();
+  n4.qcByBlockHash.clear();
+
+  // 负控制：未聚合前，n4 的陈旧 propose 只能锚定创世 → 诚实节点拒投（不扩展最高 QC B0）。
+  const stale = n4.propose(3);
+  assert.ok(stale.proposal, JSON.stringify(stale));
+  assert.equal(stale.proposal.parentHash, GENESIS_HASH, '陈旧 propose 只能锚定创世');
+  const staleVote = nodes[0].vote(stale.proposal);
+  assert.equal(staleVote.voted, false, '陈旧提案（父=创世）应被诚实节点拒投');
+
+  // n4 收齐 n1/n2/n3 的 view-change → 聚合 new-view(3)，锚 = 最高 QC 块 B0。
+  for (const n of [nodes[0], nodes[1], nodes[2]]) {
+    const ok = n4.receiveViewChange(n.viewChanges.get(n.nodeId).get(3));
+    assert.equal(ok.ok, true, JSON.stringify(ok));
+  }
+  const agg = n4.aggregateNewView(3);
+  assert.equal(agg.ok, true, JSON.stringify(agg));
+  assert.equal(agg.newView.anchorQC.blockHash, b0, '聚合锚应为最高 QC 块 B0');
+
+  // n4 提出 new-view 提案（parent = B0，justify = B0 QC）→ 全体诚实节点接受并投票。
+  const pr = n4.proposeNewView(3);
+  assert.ok(pr.proposal, JSON.stringify(pr));
+  assert.equal(pr.proposal.parentHash, b0, 'new-view 提案必须锚定 B0');
+  assert.equal(pr.proposal.justify.blockHash, b0, 'new-view 提案必须携带 B0 QC 作 justify');
+
+  const votes = [];
+  for (const n of nodes) {
+    const r = n.vote(pr.proposal);
+    assert.equal(r.voted, true, `节点投票 new-view 提案应通过: ${r.reason}`);
+    if (r.voted) votes.push(r.vote);
+  }
+  assert.equal(votes.length, 4, '4 票齐全');
+  for (const n of nodes) assert.equal(n.collectQC(votes).ok, true);
+  assert.equal(nodes[0].highestQC.blockHash, pr.proposal.blockHash, 'new-view 提案应获 QC');
+
+  // 继续推进 view 4 → 链 B0@0 → newBlock@3 → block@4 形成 3-chain → 提交 B0。
+  for (const n of nodes) while (n.view < 4) n.onTimeout();
+  round(nodes, 4);
+  assert.ok(
+    nodes[0].committed.some((b) => b.blockHash === b0),
+    '跳视图死锁经 new-view 锚定后应恢复提交 B0',
+  );
+});
+
+test('V4 拜占庭 leader 反复提父=创世高视图块：诚实节点不被牵着走（拒投 + 除名）', () => {
+  const { nodes } = buildWorld();
+  round(nodes, 0); // B0@0 获 QC → 全员 highestQC = B0
+  const b0 = nodes[0].highestQC.blockHash;
+  const qc0 = nodes[0].highestQC;
+
+  // 拜占庭 leader（view 3 = n4）反复提「父=创世」的高视图块（无 justify）。
+  const n4 = nodes[3];
+  const fake = n4.signProposal({ view: 3, leader: 'n4', parentHash: GENESIS_HASH, txs: [tx({ nonce: 'b-1' })] });
+
+  // 诚实节点 n1 跳到 view 3（view-change 携带 highestQC = B0）。
+  const n1 = nodes[0];
+  while (n1.view < 3) n1.onTimeout();
+  assert.equal(n1.viewChanges.get('n1').get(3).highestQC.blockHash, b0, 'view-change 应携带 B0 QC');
+
+  // 拜占庭父=创世提案：拒投（父=创世不扩展最高 QC B0），不被牵着走。
+  const r = n1.vote(fake);
+  assert.equal(r.voted, false, '父=创世高视图块应被拒');
+  assert.ok(r.reason.includes('highest QC'), `reason=${r.reason}`);
+  assert.equal(n1.qcByBlockHash.has(fake.blockHash), false, '拜占庭块不得进 QC 表');
+  assert.equal(n1.highestQC.blockHash, b0, '最高 QC 不被拜占庭提案倒退');
+
+  // 拜占庭 leader 同视图双签（父=创世的 fake 与 fake2）→ equivocation 检测自动除名。
+  const fake2 = n4.signProposal({ view: 3, leader: 'n4', parentHash: GENESIS_HASH, txs: [tx({ nonce: 'b-2' })] });
+  const evidence = n1.detectEquivocation([fake, fake2]);
+  assert.equal(evidence.length, 1, '拜占庭 leader 双签应被检出');
+  assert.ok(n1.expelled.has('n4'), 'equivocator 应被自动除名');
+  const afterExpel = n1.vote(fake2);
+  assert.equal(afterExpel.voted, false, '除名后其提案不再被投');
+  assert.ok(afterExpel.reason.includes('expelled'), `reason=${afterExpel.reason}`);
+
+  // 对照：new-view 聚合（锚 = B0）后，锚定最高 QC 的提案（父=B0，justify=B0 QC）被接受
+  //（用未除名视角的 n2 复验，避开 n1 已除名 n4 的干扰）。
+  for (const n of [nodes[1], nodes[2]]) {
+    while (n.view < 3) n.onTimeout();
+    const ok = n1.receiveViewChange(n.viewChanges.get(n.nodeId).get(3));
+    assert.equal(ok.ok, true, JSON.stringify(ok));
+  }
+  const agg = n1.aggregateNewView(3);
+  assert.equal(agg.ok, true, JSON.stringify(agg));
+  assert.equal(agg.newView.anchorQC.blockHash, b0, '聚合锚 = B0');
+  const good = n4.signProposal({ view: 3, leader: 'n4', parentHash: b0, txs: [tx({ nonce: 'b-3' })], justify: qc0 });
+  const r2 = nodes[1].vote(good);
+  assert.equal(r2.voted, true, '锚定最高 QC 的 new-view 提案（未除名节点视角）应被接受');
+});
+
+// ---------------------------------------------------------------------------
 // 双花：投票前拒（不进 QC）
 // ---------------------------------------------------------------------------
 

@@ -288,6 +288,10 @@ export function createNode({
     activeProposal: null,
     lock: null,                // P2 lock-on-vote：{ blockHash, view }；null 等价锁创世
 
+    // V4（第三层活性修复）view-change / new-view 消息状态：
+    viewChanges: new Map(),     // nodeId -> Map(view -> { nodeId, view, highestQC })
+    newViews: new Map(),        // view -> { view, anchorQC }（anchorQC 为 null = 创世锚）
+
     // 提交与账本状态
     committed: [],              // 已提交区块（按提交顺序）
     committedHashes: new Set(),
@@ -683,12 +687,107 @@ export function createNode({
     }
   }
 
-  // 视图切换：v+1，携带本地 highestQC（防安全倒退）。
+  // 视图切换（P4）：超时 → v+1，携带本地 highestQC（防安全倒退）。
+  // V4（第三层活性修复）：扩展为 view-change 流程 —— 生成 view-change 消息
+  // { nodeId, view, highestQC } 并登记本地 viewChanges（供新 leader 聚合）。
+  // 返回保留既有 { prevView, newView, carriedQC } 字段（向后兼容），另增 viewChange。
   node.onTimeout = function onTimeout() {
     const prevView = node.view;
     node.view = prevView + 1;
+    const vc = {
+      nodeId: node.nodeId,
+      view: node.view,
+      highestQC: node.highestQC, // 本地最高 QC（无 QC 时 null = 创世锚）
+    };
+    if (!node.viewChanges.has(node.nodeId)) node.viewChanges.set(node.nodeId, new Map());
+    node.viewChanges.get(node.nodeId).set(node.view, vc);
     node.touch();
-    return { prevView, newView: node.view, carriedQC: node.highestQC };
+    return { prevView, newView: node.view, carriedQC: node.highestQC, viewChange: vc };
+  };
+
+  // V4（第三层活性修复）view-change 收集：接收并校验其它节点的 view-change 消息
+  // { nodeId, view, highestQC }。校验：nodeId 在 roster、view 为非负整数、
+  // highestQC 为空或 verifyQC 通过（除名者拒收）。通过后登记进本地 viewChanges。
+  node.receiveViewChange = function receiveViewChange(vc) {
+    if (!vc || typeof vc !== 'object') return { ok: false, reason: 'receiveViewChange: malformed view-change' };
+    if (typeof vc.nodeId !== 'string' || !node.peerMap.has(vc.nodeId)) {
+      return { ok: false, reason: `receiveViewChange: unknown node ${vc.nodeId}` };
+    }
+    if (node.expelled.has(vc.nodeId)) {
+      return { ok: false, reason: `receiveViewChange: node ${vc.nodeId} expelled` };
+    }
+    const v = Number(vc.view);
+    if (!Number.isInteger(v) || v < 0) return { ok: false, reason: 'receiveViewChange: invalid view' };
+    if (vc.highestQC != null && !node.verifyQC(vc.highestQC)) {
+      return { ok: false, reason: 'receiveViewChange: invalid carried QC' };
+    }
+    if (!node.viewChanges.has(vc.nodeId)) node.viewChanges.set(vc.nodeId, new Map());
+    node.viewChanges.get(vc.nodeId).set(v, vc);
+    node.touch();
+    return { ok: true };
+  };
+
+  // V4（第三层活性修复）new-view 聚合：收集 ≥ threshold 个（除名者除外的）节点对
+  // targetView 的 view-change 消息，取其中 view 最高的 QC 作为锚（anchor）。
+  // 返回 { ok, newView: { view, anchorQC }, collected } 或 { ok:false, reason, collected }。
+  node.aggregateNewView = function aggregateNewView(targetView) {
+    const v = Number(targetView);
+    if (!Number.isInteger(v) || v < 0) return { ok: false, reason: 'aggregateNewView: invalid view', collected: 0 };
+    let anchorQC = null;
+    let seen = 0;
+    for (const byView of node.viewChanges.values()) {
+      const vc = byView.get(v);
+      if (!vc) continue;
+      if (node.expelled.has(vc.nodeId)) continue;
+      seen += 1;
+      if (vc.highestQC != null && (anchorQC == null || Number(vc.highestQC.view) > Number(anchorQC.view))) {
+        anchorQC = vc.highestQC;
+      }
+    }
+    if (seen < node.threshold) {
+      return { ok: false, reason: `aggregateNewView: only ${seen}/${node.threshold} view-changes for view ${v}`, collected: seen };
+    }
+    const nv = { view: v, anchorQC }; // anchorQC 为 null = 创世锚（无任何 QC）
+    node.newViews.set(v, nv);
+    node.touch();
+    return { ok: true, newView: nv, collected: seen };
+  };
+
+  // V4（第三层活性修复）采纳 new-view：校验 new-view 携带的锚 QC（anchorQC），
+  // 若 ≥ 本地 highestQC 则采纳（推进 highestQC/qcByView/qcByBlockHash），否则拒。
+  // 这是「诚实节点只接受携带 ≥ 本地最高 QC 的 new-view 提案」的落地。
+  node.adoptNewView = function adoptNewView(nv) {
+    if (!nv || typeof nv !== 'object') return { ok: false, reason: 'adoptNewView: malformed new-view' };
+    const anchorQC = nv.anchorQC;
+    if (anchorQC == null) return { ok: true, adopted: false }; // 创世锚：无可采纳 QC
+    if (!node.verifyQC(anchorQC)) return { ok: false, reason: 'adoptNewView: invalid anchor QC' };
+    if (node.highestQC && Number(anchorQC.view) < Number(node.highestQC.view)) {
+      return { ok: false, reason: 'adoptNewView: anchor QC lower than local highestQC' };
+    }
+    node.highestQC = anchorQC;
+    node.qcByView.set(anchorQC.view, anchorQC);
+    node.qcByBlockHash.set(anchorQC.blockHash, anchorQC);
+    node.touch();
+    return { ok: true, adopted: true };
+  };
+
+  // V4（第三层活性修复）new-view 提案：leader 聚合 view-change → 采纳锚 → 以锚为父块
+  // 提出 targetView 的 new-view 提案（proposal.parent = anchorQC.blockHash，justify = anchorQC）。
+  // 复用现有 propose 的父指针延续：先 adoptNewView 把 highestQC 推进到锚，
+  // 再 propose(targetView) 即锚定 parent = highestQC.blockHash 并携带 justify = 锚 QC。
+  node.proposeNewView = function proposeNewView(targetView) {
+    const v = Number(targetView);
+    if (!Number.isInteger(v) || v < 0) return { refused: true, reason: `proposeNewView: invalid view ${targetView}` };
+    if (node.leaderOf(v) !== node.nodeId) {
+      return { refused: true, reason: `proposeNewView: node ${node.nodeId} is not leader of view ${v}` };
+    }
+    const agg = node.aggregateNewView(v);
+    if (!agg.ok) return { refused: true, reason: agg.reason, collected: agg.collected };
+    if (agg.newView.anchorQC != null) {
+      const ad = node.adoptNewView(agg.newView);
+      if (!ad.ok) return { refused: true, reason: `proposeNewView: ${ad.reason}` };
+    }
+    return node.propose(v);
   };
 
   // equivocation 检测：同 (view, leader) 两个冲突提案 → 双签证据（复用 phase3）→ 自动除名。
