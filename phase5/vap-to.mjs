@@ -428,12 +428,23 @@ export function createNode({
       }
     }
 
+    // baseline/最高-QC 扩展检查（V2 活性修复，PROOFS.md P1「扩展本地最高已认证区块」）：
+    // 诚实节点对提案 P 投票的必要条件 = P.parentHash 沿 parent 链可达本地最高 QC 块
+    // （isDescendant，允许相等 = 最高 QC 的扩展）；highestQC 为空且无已提交前缀时
+    // baseline = 创世，此时仅允许 parent = GENESIS（isDescendant 对创世恒真，需显式等值特判）。
     const baseline = node.highestQC
       ? node.highestQC.blockHash
       : node.lastCommittedHash !== GENESIS_HASH
         ? node.lastCommittedHash
-        : GENESIS_HASH;
-    if (proposal.parentHash !== baseline) {
+        : null; // 空基线（无最高 QC、无已提交前缀）→ 仅允许 parent = GENESIS
+    if (baseline == null) {
+      if (proposal.parentHash !== GENESIS_HASH) {
+        return {
+          pass: false,
+          reason: 'safety: parentHash does not extend local highest QC (empty baseline, expect parent = GENESIS)',
+        };
+      }
+    } else if (!node.isDescendant(proposal.parentHash, baseline)) {
       return {
         pass: false,
         reason: `safety: parentHash does not extend local highest QC (${baseline})`,

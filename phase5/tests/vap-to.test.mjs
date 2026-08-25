@@ -180,6 +180,57 @@ test('safety rule refuses a proposal that does not extend local highest QC', () 
   assert.equal(nodes[0].vote(good).voted, true);
 });
 
+test('baseline 空基线：跳视图后拒投「父块无 QC」的高视图块（复现 TLC §5.2 跳跃投票反例）', () => {
+  const { nodes } = buildWorld();
+  const node = nodes[0]; // 诚实节点，highestQC 为空（= 创世）
+
+  // 拜占庭 leader 造一个父块 B1@1（父=创世），无人投票 → B1 无 QC。
+  const n2 = nodes[1];
+  const B1 = n2.signProposal({ view: 1, leader: 'n2', parentHash: GENESIS_HASH, txs: [] });
+  node.blocks.set(B1.blockHash, B1); // 诚实节点「知道」B1，但 B1 无 QC
+
+  // 诚实节点跳视图 0→3（期间不投票、不收 QC）→ highestQC 仍为空。
+  node.onTimeout();
+  node.onTimeout();
+  node.onTimeout();
+  assert.equal(node.view, 3);
+  assert.equal(node.highestQC, null, 'highestQC 必须仍为空（从未收集 QC）');
+
+  // 拜占庭 leader（view 3 = n4）提 view-3 高视图块，父 = 无 QC 的 B1。
+  // baseline 空 → 仅允许 parent = GENESIS → 拒投，返回 baseline reason。
+  const n4 = nodes[3];
+  const B2 = n4.signProposal({ view: 3, leader: 'n4', parentHash: B1.blockHash, txs: [tx()] });
+  const r = node.vote(B2);
+  assert.equal(r.voted, false);
+  assert.ok(r.reason.includes('highest QC'), `reason=${r.reason}`);
+  assert.ok(r.reason.includes('empty baseline'), `reason=${r.reason}`);
+  assert.equal(node.qcByBlockHash.has(B2.blockHash), false, '拒投块不得进 QC 表');
+
+  // 负控制：空基线下父 = GENESIS 的提案照常通过（规则是「仅允许 parent=GENESIS」，非「拒所有高视图块」）。
+  const B3 = n4.signProposal({ view: 3, leader: 'n4', parentHash: GENESIS_HASH, txs: [tx()] });
+  assert.equal(node.vote(B3).voted, true);
+});
+
+test('baseline 扩展语义：父块为 highestQC 的严格后代也通过（旧等值检查会误拒）', () => {
+  const { nodes } = buildWorld();
+  round(nodes, 0); // highestQC = block0
+  const node = nodes[0];
+  const block0 = node.highestQC.blockHash;
+
+  // view 1 leader = n2；造 block1（父 block0）并让 node 投它但不收 QC → highestQC 仍 block0。
+  const n2 = nodes[1];
+  const B1 = n2.signProposal({ view: 1, leader: 'n2', parentHash: block0, txs: [] });
+  assert.equal(node.vote(B1).voted, true); // lock → block0，B1 入 blocks，无 QC
+  assert.equal(node.highestQC.blockHash, block0, '未收 QC，highestQC 仍为 block0');
+
+  // view 2 leader = n3；造 block2（父 B1 = block0 的严格后代）。
+  // 旧等值检查会拒（parent != block0）；扩展检查应通过（isDescendant(B1, block0) = true）。
+  const n3 = nodes[2];
+  const B2 = n3.signProposal({ view: 2, leader: 'n3', parentHash: B1.blockHash, txs: [] });
+  const r = node.vote(B2);
+  assert.equal(r.voted, true, `父块为 highestQC 严格后代应通过：${r.reason}`);
+});
+
 test('safety rule refuses conflicting proposals in the same view (no double vote)', () => {
   const { nodes } = buildWorld();
   round(nodes, 0);
