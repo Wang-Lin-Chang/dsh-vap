@@ -350,9 +350,10 @@ export function createNode({
     return txs;
   }
 
-  // 签名一个提案（供拜占庭场景构造：任意 parentHash / txs）。justify 置空。
-  node.signProposal = function signProposal({ view, leader, parentHash, txs } = {}) {
-    const proposal = { view, leader, parentHash, txs: sortTxs(txs || []), justify: null, sig: '' };
+  // 签名一个提案（供拜占庭场景构造：任意 parentHash / txs）。justify 默认为空，
+  // 可显式传入父块 QC（第二层 Certified(parent) 前置的负控制用）。
+  node.signProposal = function signProposal({ view, leader, parentHash, txs, justify = null } = {}) {
+    const proposal = { view, leader, parentHash, txs: sortTxs(txs || []), justify, sig: '' };
     proposal.blockHash = hashBlock(proposal);
     proposal.sig = signString(canonicalJson(blockContent(proposal)), privateKey);
     return proposal;
@@ -448,6 +449,20 @@ export function createNode({
       return {
         pass: false,
         reason: `safety: parentHash does not extend local highest QC (${baseline})`,
+      };
+    }
+
+    // V3（第二层活性修复，Certified(parent) 前置）：父块必须已认证。
+    // 收紧 baseline「扩展」语义：parentHash 沿链可达最高已认证块不再足够，parent 自身必须已获 QC
+    // （= 提案携带父块 QC justify 的显式建模，与 TLA+ 的 ParentCertified(b)=Certified(parent[b]) 对齐）。
+    // 判定：非创世父块，要么上方 justify 已验签并采纳进 qcByBlockHash，要么本地已持有该父块 QC
+    // （qcByBlockHash，含 restore 回放的已提交块 QC）。消除 §4.2「父块=最高已认证块的未认证后代」
+    // 反例：B1 获 QC 后投 parent=B2（B2 沿链可达 B1 但自身无 QC）的 B3 → B2 永无 QC → 无 3-chain。
+    const parentCertified = proposal.parentHash === GENESIS_HASH || node.qcByBlockHash.has(proposal.parentHash);
+    if (!parentCertified) {
+      return {
+        pass: false,
+        reason: 'safety: parentHash is not certified (parent block has no QC; proposal must carry a valid justify QC for parent)',
       };
     }
 

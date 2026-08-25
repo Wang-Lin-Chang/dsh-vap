@@ -211,24 +211,56 @@ test('baseline 空基线：跳视图后拒投「父块无 QC」的高视图块�
   assert.equal(node.vote(B3).voted, true);
 });
 
-test('baseline 扩展语义：父块为 highestQC 的严格后代也通过（旧等值检查会误拒）', () => {
+test('Certified(parent) 第二层：父块为最高已认证块的未认证后代 → 拒投（复现 TLC §4.2 反例）', () => {
   const { nodes } = buildWorld();
-  round(nodes, 0); // highestQC = block0
+  round(nodes, 0); // QC0 → highestQC = block0（已认证）
   const node = nodes[0];
   const block0 = node.highestQC.blockHash;
 
-  // view 1 leader = n2；造 block1（父 block0）并让 node 投它但不收 QC → highestQC 仍 block0。
+  // view 1 leader = n2：造 B1（父 block0，已认证），node 投 B1 但不收 QC → B1 无 QC。
   const n2 = nodes[1];
   const B1 = n2.signProposal({ view: 1, leader: 'n2', parentHash: block0, txs: [] });
-  assert.equal(node.vote(B1).voted, true); // lock → block0，B1 入 blocks，无 QC
+  assert.equal(node.vote(B1).voted, true, '父块 block0 已认证 → 投 B1 通过');
   assert.equal(node.highestQC.blockHash, block0, '未收 QC，highestQC 仍为 block0');
+  assert.equal(node.qcByBlockHash.has(B1.blockHash), false, 'B1 未收 QC，无认证');
 
-  // view 2 leader = n3；造 block2（父 B1 = block0 的严格后代）。
-  // 旧等值检查会拒（parent != block0）；扩展检查应通过（isDescendant(B1, block0) = true）。
+  // view 2 leader = n3：造 B2（父 B1 = block0 的未认证后代）。B1 无 QC 可带 → justify 为空。
+  // 第一层 baseline「扩展」语义会放行（B1 沿链可达 block0），第二层 Certified(parent) 必须拒投。
   const n3 = nodes[2];
   const B2 = n3.signProposal({ view: 2, leader: 'n3', parentHash: B1.blockHash, txs: [] });
   const r = node.vote(B2);
-  assert.equal(r.voted, true, `父块为 highestQC 严格后代应通过：${r.reason}`);
+  assert.equal(r.voted, false);
+  assert.ok(r.reason.includes('certified'), `reason=${r.reason}`);
+  assert.ok(r.reason.includes('justify'), `reason=${r.reason}`);
+  assert.equal(node.qcByBlockHash.has(B2.blockHash), false, '拒投块不得进 QC 表');
+
+  // 负控制：父块已认证（block0 自身有 QC）的提案照常通过。
+  const good = n3.signProposal({ view: 2, leader: 'n3', parentHash: block0, txs: [] });
+  assert.equal(node.vote(good).voted, true, '父块已认证 → 通过');
+});
+
+test('Certified(parent) 第二层：提案携带有效 justify（父块 QC）→ 采纳并投通过', () => {
+  const { nodes } = buildWorld();
+  round(nodes, 0); // QC0 → highestQC = block0 = qc0
+  const node = nodes[0];
+  const block0 = node.highestQC.blockHash;
+  const qc0 = node.highestQC;
+
+  // view 1 leader = n2：造 B1（父 block0），携带 justify = qc0（blockHash == parentHash，验签通过）。
+  const n2 = nodes[1];
+  const B1 = n2.signProposal({ view: 1, leader: 'n2', parentHash: block0, txs: [], justify: qc0 });
+  const r = node.vote(B1);
+  assert.equal(r.voted, true, `带有效 justify 应通过：${r.reason}`);
+  assert.equal(node.qcByBlockHash.has(block0), true, 'justify 指向的父块 QC 应被采纳进 qcByBlockHash');
+
+  // 篡改 justify 的 blockHash（不再指向 parentHash）→ 拒投（justify 不匹配父指针）。
+  // 用 view 2（leader n3）避开「同视图已投过」检查，直达 justify 校验。
+  const n3 = nodes[2];
+  const tampered = { ...qc0, blockHash: 'DEADBEEF' };
+  const B2 = n3.signProposal({ view: 2, leader: 'n3', parentHash: block0, txs: [], justify: tampered });
+  const r2 = node.vote(B2);
+  assert.equal(r2.voted, false);
+  assert.ok(r2.reason.includes('justify'), `reason=${r2.reason}`);
 });
 
 test('safety rule refuses conflicting proposals in the same view (no double vote)', () => {
