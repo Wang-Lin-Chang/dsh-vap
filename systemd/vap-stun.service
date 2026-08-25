@@ -1,0 +1,20 @@
+# VAP STUN —— 自研 STUN 服务器常驻服务（端口 3478）
+# 日志：journalctl -u vap-stun -f
+[Unit]
+Description=VAP STUN server (port 3478)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/dsh-vap
+ExecStart=/usr/bin/node /home/ubuntu/dsh-vap/phase7/stun-server.mjs 3478 0.0.0.0
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=6
+
+[Install]
+WantedBy=multi-user.target

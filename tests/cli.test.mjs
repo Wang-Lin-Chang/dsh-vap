@@ -398,7 +398,7 @@ test('vap-send --dry-run 只构造不投递（打印信封 JSON，exit 0）', as
   const json = JSON.parse(jsonMatch[1]);
   assert.match(json.id, /^evt-[0-9a-f]{16}$/, '打印的是完整信封 JSON');
   assert.equal(json.to, 'brain');
-  assert.match(json.nonce, /^[0-9a-f]{16}$/);
+  assert.match(json.nonce, /^[0-9a-f]{16,32}$/);
 });
 
 test('vap-send --key 用指定私钥发（身份 = 该私钥）', async () => {

@@ -218,6 +218,14 @@ export function createFileTransport({ root } = {}) {
 //                            false = 兼容模式，仍禁止路径穿越字符但允许自定义 id。
 //   requireInboundSignature  true（默认）= 入站信封先验 Ed25519 签名，失败 403（M7）；
 //                            false = 旧「只搬运」语义（伪造件交由下游三道闸裁决）。
+//
+// 参数（生产级加固批次 · S7/S8）：
+//   gatewayToken             null（默认）= 未配置时 GET /envelopes 仅允许回环（127.0.0.1/::1）；
+//                            配置后出站投递必须携带 Authorization: Bearer <token>
+//                            （timing-safe 比较）。POST 入站仍走验签准入，不强制 token。
+//   inboundRatePerSec        10（默认）= POST /envelopes 每来源 IP 令牌桶速率；
+//   inboundRateBurst         30（默认）= 桶容量（突发上限）；
+//   maxInboxFiles            10000（默认）= inbox-http 落盘文件数上限，超限 503。
 // ---------------------------------------------------------------------------
 
 export function createHttpGateway({
@@ -232,6 +240,10 @@ export function createHttpGateway({
   log = null,
   logger = null,
   config = null,
+  gatewayToken = null,
+  inboundRatePerSec = 10,
+  inboundRateBurst = 30,
+  maxInboxFiles = 10000,
 } = {}) {
   // M8：config（loadConfig 合并结果）可覆盖 host/port 默认值；显式参数仍优先。
   const cfg = config && typeof config === 'object' ? config : null;
@@ -266,6 +278,43 @@ export function createHttpGateway({
   let boundPort = null;
   let errorCount = 0;      // M11：累计错误次数
   let lastError = null;    // M11：最近一次错误
+  let authRejected = 0;    // S7：GET /envelopes 认证失败次数
+  let rateRejected = 0;    // S8：POST 入站限速拒绝次数
+  let quotaRejected = 0;   // S8：inbox 配额拒绝次数
+  const ipBuckets = new Map(); // S8：来源 IP -> { tokens, last }
+
+  // S7：出站投递认证。gatewayToken 未配置时仅回环可读 outbox（防公网部署被拉空队列）；
+  // 配置后必须 Bearer token（timing-safe 比较）。
+  const tokenBuf = typeof gatewayToken === 'string' && gatewayToken.length > 0 ? Buffer.from(gatewayToken) : null;
+
+  function isLoopbackRemote(req) {
+    const a = String(req.socket.remoteAddress || '');
+    return a === '127.0.0.1' || a === '::1' || a === '::ffff:127.0.0.1';
+  }
+
+  function outboundAuthOk(req) {
+    if (!tokenBuf) return isLoopbackRemote(req);
+    const h = req.headers && req.headers.authorization;
+    const m = typeof h === 'string' && /^Bearer (.+)$/.exec(h);
+    if (!m) return false;
+    const a = Buffer.from(m[1]);
+    return a.length === tokenBuf.length && crypto.timingSafeEqual(a, tokenBuf);
+  }
+
+  // S8：POST 入站 per-IP 令牌桶（防自签洪泛无限落盘 + 向 peers 放大）。
+  function postAllow(ip) {
+    const now = Date.now();
+    let e = ipBuckets.get(ip);
+    if (!e) {
+      e = { tokens: inboundRateBurst, last: now };
+      ipBuckets.set(ip, e);
+    }
+    e.tokens = Math.min(inboundRateBurst, e.tokens + ((now - e.last) / 1000) * inboundRatePerSec);
+    e.last = now;
+    if (e.tokens < 1) return false;
+    e.tokens -= 1;
+    return true;
+  }
 
   function recordError(err) {
     errorCount += 1;
@@ -290,6 +339,9 @@ export function createHttpGateway({
 
   function health(options = {}) {
     const detail = options && options.detail === true;
+    // S8：顺带清理 5 分钟无活动的限速桶（防 Map 无限增长）。
+    const now = Date.now();
+    for (const [ip, e] of ipBuckets) if (now - e.last > 300000) ipBuckets.delete(ip);
     const ok = probeWritable(inboxHttp) && probeWritable(fileTransport.outbox);
     const base = {
       ok,
@@ -299,7 +351,7 @@ export function createHttpGateway({
       relayed: countRelayed(root),
     };
     if (!detail) return base;
-    // M11：真实状态（error 计数 / lastError / 积压数）。
+    // M11 + S7/S8：真实状态（error 计数 / lastError / 积压数 / 安全拒绝计数）。
     return {
       ...base,
       errors: errorCount,
@@ -307,6 +359,9 @@ export function createHttpGateway({
       inboxBacklog: base.envelopesIn,
       outboxBacklog: base.envelopesOut,
       writable: ok,
+      authRejected,
+      rateRejected,
+      quotaRejected,
     };
   }
 
@@ -388,6 +443,13 @@ export function createHttpGateway({
     }
 
     if (method === 'GET' && route === '/envelopes') {
+      // S7：出站投递认证——未配置 token 时仅回环；配置后必须 Bearer token。
+      if (!outboundAuthOk(req)) {
+        authRejected += 1;
+        emitLog('error', 'GET /envelopes status=403 unauthorized');
+        respond(res, 403, { ok: false, error: 'unauthorized' });
+        return;
+      }
       const after = url.searchParams.get('after') || undefined;
       const envelopes = fileTransport.read({ after });
       for (const env of envelopes) fileTransport.markDelivered(env.id);
@@ -397,6 +459,21 @@ export function createHttpGateway({
     }
 
     if (method === 'POST' && route === '/envelopes') {
+      // S8：入站限速（per-IP 令牌桶）——防自签洪泛无限落盘与向 peers 放大。
+      const remoteIp = String(req.socket.remoteAddress || '');
+      if (!postAllow(remoteIp)) {
+        rateRejected += 1;
+        emitLog('error', `POST /envelopes status=429 rate-limited ip=${remoteIp}`);
+        respond(res, 429, { ok: false, error: 'rate limited' });
+        return;
+      }
+      // S8：inbox 落盘配额——文件数超限即 503（不无限增长）。
+      if (countInbound() >= maxInboxFiles) {
+        quotaRejected += 1;
+        emitLog('error', 'POST /envelopes status=503 inbox-quota');
+        respond(res, 503, { ok: false, error: 'inbox quota exceeded' });
+        return;
+      }
       const isRelay = req.headers['x-vap-relay'] === '1';
       readRequestBody(req, maxBodyBytes, (result) => {
         if (result.tooLarge) {

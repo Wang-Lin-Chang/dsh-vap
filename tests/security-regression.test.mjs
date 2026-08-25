@@ -17,6 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import http from 'node:http';
+import dgram from 'node:dgram';
 
 import {
   createVapNode,
@@ -25,6 +26,7 @@ import {
   canonicalJson,
   claimNonce,
   nonceSeen,
+  verifyEnvelopeSignature,
 } from '../vap-core.mjs';
 import { createHttpGateway, createHttpClient, ENVELOPE_ID_PATTERN } from '../vap-transport.mjs';
 import { createHttpTransport } from '../phase1/transport-spi.mjs';
@@ -69,6 +71,23 @@ function rawPost(port, pathname, body, headers = {}) {
     });
     req.on('error', reject);
     req.write(body);
+    req.end();
+  });
+}
+
+function rawGet(port, pathname, headers = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({ host: '127.0.0.1', port, path: pathname, method: 'GET', headers }, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let data = null;
+        try { data = text ? JSON.parse(text) : null; } catch { data = null; }
+        resolve({ status: res.statusCode, data, text });
+      });
+    });
+    req.on('error', reject);
     req.end();
   });
 }
@@ -139,7 +158,7 @@ test('F1 nonce 白名单：claimNonce 对越界 nonce 直接拒绝且完全不�
     '/etc/passwd',
     'ABCDEF0123456789',   // 大写不在白名单
     '0123456789abcde',    // 15 位
-    '0123456789abcdef0',  // 17 位
+    '0123456789abcdef0123456789abcdef0', // 33 位（超上限 32）
     '',
     null,
     123,
@@ -151,10 +170,12 @@ test('F1 nonce 白名单：claimNonce 对越界 nonce 直接拒绝且完全不�
   // 关键证据：一次非法 nonce 都不该让 seen-nonces 目录被创建（更不该落文件）。
   assert.equal(fs.existsSync(path.join(root, 'seen-nonces')), false, '非法 nonce 不得创建 seen-nonces 目录');
 
-  // 合法 nonce 行为不变：首次 true、重复 false。
+  // 合法 nonce 行为不变：首次 true、重复 false；16~32 位 hex 均合法（S9 放宽兼容）。
   assert.equal(claimNonce(root, '0123456789abcdef'), true);
   assert.equal(claimNonce(root, '0123456789abcdef'), false);
-  assert.deepEqual(fs.readdirSync(path.join(root, 'seen-nonces')), ['0123456789abcdef']);
+  assert.equal(claimNonce(root, '0123456789abcdef0'), true, '17 位 hex 合法（S9）');
+  assert.equal(claimNonce(root, 'a'.repeat(32)), true, '32 位 hex 合法（S9）');
+  assert.deepEqual(fs.readdirSync(path.join(root, 'seen-nonces')).sort(), ['0123456789abcdef', '0123456789abcdef0', 'a'.repeat(32)]);
 });
 
 test('F1 网关：nonce 含 / 或 .. → 400 bad nonce，网关不崩且不留越界文件', async () => {
@@ -484,6 +505,237 @@ function connectRaw(port) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// S4/S5 中继生产级加固回归（注册必须带 pubKey / from 绑定 / 带宽上限 / 死连接顶替仍须认证）
+// ---------------------------------------------------------------------------
+
+test('S5a: 无 pubKey 注册被拒（匿名注册不可抢占 nodeId）', async () => {
+  const server = createRelayServer({ port: 0 });
+  const port = await server.start();
+  const sock = await connectRaw(port);
+  try {
+    sock.write(encodeFrame({ type: 'register', nodeId: 'free-name' }));
+    await waitFor(() => server.stats().rejectedRegistrations === 1);
+    assert.deepEqual(server.registry(), [], '无 pubKey 注册不得进表');
+  } finally {
+    sock.destroy();
+    await server.stop();
+  }
+});
+
+test('S5b: 旧连接已死时，错误 pubKey 注册仍被拒（pubKey 墓碑）', async () => {
+  const server = createRelayServer({ port: 0 });
+  const port = await server.start();
+  const owner = await connectRaw(port);
+  const attacker = await connectRaw(port);
+  try {
+    owner.write(encodeFrame({ type: 'register', nodeId: 'dup', pubKey: 'pk-owner' }));
+    await waitFor(() => server.registry().includes('dup'));
+    const registeredBefore = server.stats().registered;
+    owner.destroy(); // 旧连接死掉（close 清活跃表）——墓碑仍要求正确 pubKey 才能再注册
+    await waitFor(() => server.registry().length === 0);
+    attacker.write(encodeFrame({ type: 'register', nodeId: 'dup', pubKey: 'pk-attacker' }));
+    await waitFor(() => server.stats().rejectedTakeovers >= 1);
+    assert.equal(server.stats().rejectedTakeovers, 1, '死连接后错误 pubKey 注册必须被拒');
+    assert.equal(server.stats().registered, registeredBefore, '注册计数不得增长（攻击被拒）');
+    assert.deepEqual(server.registry(), [], '攻击者不得进表');
+    // 正确 pubKey 的合法重连不受误伤。
+    const legit = await connectRaw(port);
+    legit.write(encodeFrame({ type: 'register', nodeId: 'dup', pubKey: 'pk-owner' }));
+    await waitFor(() => server.registry().includes('dup'));
+    assert.equal(server.stats().registered, registeredBefore + 1, '正确 pubKey 重连成功');
+    legit.destroy();
+  } finally {
+    attacker.destroy();
+    await server.stop();
+  }
+});
+
+test('S5c: relay 转发必须 from===注册名（未注册/伪造 from 被拒）', async () => {
+  const server = createRelayServer({ port: 0 });
+  const port = await server.start();
+  const a = await connectRaw(port);
+  const b = await connectRaw(port);
+  const bFrames = [];
+  b.on('data', (c) => bFrames.push(c));
+  try {
+    // 未注册即发 relay → 拒
+    a.write(encodeFrame({ type: 'relay', from: 'A', to: 'B', envelope: { id: 'e1' } }));
+    await waitFor(() => server.stats().relayFromMismatch === 1);
+    // 注册 A 后伪造 from=C → 拒
+    a.write(encodeFrame({ type: 'register', nodeId: 'A', pubKey: 'pk-a' }));
+    b.write(encodeFrame({ type: 'register', nodeId: 'B', pubKey: 'pk-b' }));
+    await waitFor(() => server.registry().length === 2);
+    a.write(encodeFrame({ type: 'relay', from: 'C', to: 'B', envelope: { id: 'e2' } }));
+    await waitFor(() => server.stats().relayFromMismatch === 2);
+    // 正确 from → 转发
+    a.write(encodeFrame({ type: 'relay', from: 'A', to: 'B', envelope: { id: 'e3' } }));
+    await waitFor(() => bFrames.length > 0);
+    assert.equal(server.stats().forwarded, 1, '正确 from 的 relay 正常转发');
+    assert.equal(server.stats().relayFromMismatch, 2);
+  } finally {
+    a.destroy();
+    b.destroy();
+    await server.stop();
+  }
+});
+
+test('S5d: 出站带宽上限生效（超限帧被丢弃）', async () => {
+  // 单目的端上限 200B/s：第一帧（>200B）直接超限被拒；缩小上限验证计数递增。
+  const server = createRelayServer({ port: 0, relayBytesPerSecPerDest: 0, relayBytesPerSecGlobal: 10 * 1024 * 1024 });
+  const port = await server.start();
+  const a = await connectRaw(port);
+  const b = await connectRaw(port);
+  try {
+    a.write(encodeFrame({ type: 'register', nodeId: 'A', pubKey: 'pk-a' }));
+    b.write(encodeFrame({ type: 'register', nodeId: 'B', pubKey: 'pk-b' }));
+    await waitFor(() => server.registry().length === 2);
+    const frame = encodeFrame({ type: 'relay', from: 'A', to: 'B', envelope: { id: 'big', data: 'x'.repeat(500) } });
+    a.write(frame);
+    await waitFor(() => server.stats().relayRateLimited >= 1);
+    assert.equal(server.stats().forwarded, 0, 'per-dest 桶为 0：任何转发都被带宽上限拒绝');
+    assert.ok(server.stats().relayRateLimited >= 1);
+  } finally {
+    a.destroy();
+    b.destroy();
+    await server.stop();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// S7/S8 网关生产级加固回归（出站投递认证 / 入站限速 / inbox 配额）
+// ---------------------------------------------------------------------------
+
+async function makeValidEnvelope() {
+  const node = createVapNode({ nodeId: 'gw-sender', root: makeRoot() });
+  return node.send(validSendParams());
+}
+
+test('S7: 配置 gatewayToken 后，GET /envelopes 无 token/错 token 403，正确 token 200', async () => {
+  const root = makeRoot();
+  const gw = createHttpGateway({ port: 0, root, gatewayToken: 'sec-tok-1' });
+  const port = await gw.start();
+  const node = createVapNode({ nodeId: 'sender', root: makeRoot() });
+  try {
+    // 预置一封出站信封到 gw 的 outbox（root/outbox/evt-<id>.json）。
+    const env = node.send(validSendParams());
+    fs.mkdirSync(path.join(root, 'outbox'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'outbox', `${env.id}.json`), JSON.stringify(env));
+
+    // 无 token → 403
+    const noTok = await rawGet(port, '/envelopes');
+    assert.equal(noTok.status, 403);
+    // 错 token → 403
+    const wrongTok = await rawGet(port, '/envelopes', { authorization: 'Bearer wrong' });
+    assert.equal(wrongTok.status, 403);
+    // 正确 token → 200 且能拉到未投递信封
+    const okTok = await rawGet(port, '/envelopes', { authorization: 'Bearer sec-tok-1' });
+    assert.equal(okTok.status, 200);
+    assert.ok(Array.isArray(okTok.data) && okTok.data.length >= 1, '正确 token 应拉到 outbox 信封');
+    assert.ok(gw.health({ detail: true }).authRejected >= 2, 'authRejected 计数');
+  } finally {
+    await gw.stop();
+  }
+});
+
+test('S8: 入站限速——inboundRatePerSec=0 时合法信封也 429', async () => {
+  const root = makeRoot();
+  const gw = createHttpGateway({ port: 0, root, inboundRatePerSec: 0, inboundRateBurst: 0 });
+  const port = await gw.start();
+  try {
+    const env = await makeValidEnvelope();
+    const resp = await rawPost(port, '/envelopes', JSON.stringify(env));
+    assert.equal(resp.status, 429, '桶容量为 0：任何入站都被限速拒绝');
+    assert.ok(gw.health({ detail: true }).rateRejected >= 1);
+  } finally {
+    await gw.stop();
+  }
+});
+
+test('S8: inbox 配额——maxInboxFiles=0 时合法信封 503', async () => {
+  const root = makeRoot();
+  const gw = createHttpGateway({ port: 0, root, maxInboxFiles: 0 });
+  const port = await gw.start();
+  try {
+    const env = await makeValidEnvelope();
+    const resp = await rawPost(port, '/envelopes', JSON.stringify(env));
+    assert.equal(resp.status, 503, '配额为 0：任何落盘都被拒');
+    assert.ok(gw.health({ detail: true }).quotaRejected >= 1);
+  } finally {
+    await gw.stop();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// S11 canonicalJson 深度/循环防护 + R3 账本损坏容忍（fuzz 实证 P0 → 修复回归）
+// ---------------------------------------------------------------------------
+
+test('S11: 深层嵌套 JSON → canonicalJson 抛可控 RangeError（不栈溢出崩溃）', () => {
+  let deep = { leaf: 1 };
+  for (let i = 0; i < 200; i += 1) deep = { next: deep };
+  assert.throws(() => canonicalJson(deep), RangeError, '超深度必须抛可控错误');
+  // 正常对象不受影响
+  assert.equal(canonicalJson({ b: 1, a: 2 }), '{"a":2,"b":1}');
+});
+
+test('S11: 循环引用 → canonicalJson 抛可控 TypeError', () => {
+  const a = { name: 'a' };
+  a.self = a;
+  assert.throws(() => canonicalJson(a), TypeError, '循环引用必须抛可控错误');
+});
+
+test('S11: 深嵌套信封验签返回 false 不崩溃（网关路径安全）', () => {
+  let deep = { leaf: 1 };
+  for (let i = 0; i < 200; i += 1) deep = { next: deep };
+  const env = { v: 1, id: 'evt-x', from: { nodeId: 'n', pubKey: makeKeys().pubKey }, claim: deep, sig: 'AA==' };
+  assert.equal(verifyEnvelopeSignature(env), false, '验签路径必须拒绝深嵌套而非崩溃');
+});
+
+test('R3: 账本尾部半行损坏 → restore 截断到一致前缀，不崩溃', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-r3-'));
+  const keys = makeKeys();
+  const peers = [{ nodeId: 'n1', pubKey: keys.pubKey }];
+  const node = createNode({ nodeId: 'n1', keyPair: keys, n: 1, f: 0, peers, ledgerDir: dir });
+  try {
+    node.submitTx({ type: 'commit', from: 'client', nonce: 'r3-1', payload: { pay: 1 } });
+    for (let v = 0; v < 3; v += 1) {
+      const pr = node.propose(v);
+      assert.ok(pr.proposal, JSON.stringify(pr));
+      const voteRes = node.vote(pr.proposal);
+      assert.equal(voteRes.voted, true, voteRes.reason);
+      const qc = node.collectQC([voteRes.vote]);
+      assert.equal(qc.ok, true, JSON.stringify(qc));
+      node.commitCheck();
+    }
+    assert.equal(node.committedHeight, 1);
+    const ledgerFile = path.join(dir, 'ledger-n1.jsonl');
+    assert.equal(fs.existsSync(ledgerFile), true);
+    // 场景 A：追加损坏的半行 JSON（模拟崩溃时的非原子 append）→ 行级损坏被跳过，静默恢复
+    fs.appendFileSync(ledgerFile, '{broken half line\n');
+    const node2 = createNode({ nodeId: 'n1', keyPair: keys, n: 1, f: 0, peers, ledgerDir: dir });
+    try {
+      const r = node2.restore();
+      assert.equal(r.restored, 1, '半行损坏被跳过，一致前缀完整恢复');
+      assert.equal(r.truncatedAt, null, '行级损坏不触发链截断（被 readLedgerLines 跳过）');
+    } finally {
+      node2.shutdown ? node2.shutdown() : null;
+    }
+    // 场景 B：追加合法 JSON 但高度断裂的行 → 哈希链断裂，截断并记录位置
+    fs.appendFileSync(ledgerFile, `${JSON.stringify({ height: 99, prevHash: 'broken', block: null })}\n`);
+    const node3 = createNode({ nodeId: 'n1', keyPair: keys, n: 1, f: 0, peers, ledgerDir: dir });
+    try {
+      const r2 = node3.restore();
+      assert.equal(r2.restored, 1, '断裂点之前的区块仍恢复');
+      assert.equal(r2.truncatedAt, 1, '断裂位置应被记录');
+      assert.ok(node3.lastRestoreError.includes('index 1'), node3.lastRestoreError);
+    } finally {
+      node3.shutdown ? node3.shutdown() : null;
+    }
+  } finally {
+    node.shutdown ? node.shutdown() : null;
+  }
+});
+
 test('M3 relay 注册白名单：越界 nodeId 拒绝注册（不进转发表）', async () => {
   const server = createRelayServer({ port: 0 });
   const port = await server.start();
@@ -530,8 +782,8 @@ test('M3 relay 顶替认证：pubKey 不匹配 → 拒绝顶替，旧连接继�
     assert.equal(server.stats().replacements, 0, '不许发生顶替');
     assert.equal(owner.destroyed, false, '旧连接不许被踢');
 
-    // 发给 dup 的信封仍旧到达 owner，不到 attacker。
-    sender.write(encodeFrame({ type: 'relay', to: 'dup', envelope: { id: 'evt-x' } }));
+    // 发给 dup 的信封仍旧到达 owner，不到 attacker。（S5c：relay 必须带注册名 from）
+    sender.write(encodeFrame({ type: 'relay', from: 'sender', to: 'dup', envelope: { id: 'evt-x' } }));
     await waitFor(() => ownerFrames.length > 0);
     assert.ok(ownerFrames.length > 0, 'owner 应收到信封');
     assert.equal(attackerFrames.length, 0, 'attacker 不许截获信封');
@@ -674,4 +926,59 @@ test('M6 ledgerFile：越界 nodeId 用 sha256 文件名且不越出 ledgerDir�
     'ledgerDir 内只应出现摘要文件名',
   );
   assert.equal(fs.existsSync(path.join(path.dirname(dir), 'evil.jsonl')), false);
+});
+
+// ---------------------------------------------------------------------------
+// S3 打洞握手 token 认证（生产级加固批次：伪造 from 站点名不可劫持直连）
+// ---------------------------------------------------------------------------
+
+import { createHolePuncher } from '../phase7/hole-punch.mjs';
+
+async function s3Setup() {
+  const puncher = createHolePuncher({ localPort: 0, nodeId: 'A', myToken: 'my-tok-A' });
+  const port = await puncher.bind();
+  const attacker = dgram.createSocket('udp4');
+  await new Promise((r) => attacker.bind(0, '127.0.0.1', r));
+  const attackerPort = attacker.address().port;
+  return { puncher, port, attacker, attackerPort };
+}
+
+function s3AttackPacket(from, token) {
+  const j = { type: 'payload', from };
+  if (token !== null) j.token = token;
+  return Buffer.from(JSON.stringify(j));
+}
+
+test('S3: 无 token 的伪造直连包不得建立直连（攻击者已知站点名）', async () => {
+  const { puncher, port, attacker, attackerPort } = await s3Setup();
+  const punchP = puncher.punchTo({ ip: '127.0.0.1', port: attackerPort, from: 'B', token: 'peer-tok-B' }, 1200);
+  await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 3; i++) attacker.send(s3AttackPacket('B', null), port, '127.0.0.1');
+  const res = await punchP;
+  assert.equal(res.directEstablished, false, '无 token 伪造包必须被拒');
+  assert.equal(puncher.stats().directReceived, 0);
+  puncher.close(); attacker.close();
+});
+
+test('S3: 错误 token 的伪造直连包不得建立直连', async () => {
+  const { puncher, port, attacker, attackerPort } = await s3Setup();
+  const punchP = puncher.punchTo({ ip: '127.0.0.1', port: attackerPort, from: 'B', token: 'peer-tok-B' }, 1200);
+  await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 3; i++) attacker.send(s3AttackPacket('B', 'wrong-token'), port, '127.0.0.1');
+  const res = await punchP;
+  assert.equal(res.directEstablished, false, '错误 token 伪造包必须被拒');
+  assert.equal(puncher.stats().directReceived, 0);
+  puncher.close(); attacker.close();
+});
+
+test('S3: 携带正确 token 的合法对端包建立直连（回归不误伤）', async () => {
+  const { puncher, port, attacker, attackerPort } = await s3Setup();
+  const punchP = puncher.punchTo({ ip: '127.0.0.1', port: attackerPort, from: 'B', token: 'peer-tok-B' }, 1500);
+  await new Promise((r) => setTimeout(r, 100));
+  for (let i = 0; i < 3; i++) attacker.send(s3AttackPacket('B', 'peer-tok-B'), port, '127.0.0.1');
+  const res = await punchP;
+  assert.equal(res.directEstablished, true, '正确 token 必须正常建立直连');
+  assert.ok(puncher.stats().directReceived >= 1);
+  assert.equal(res.actualPeer.port, attackerPort, 'actualPeer 指向真实对端源');
+  puncher.close(); attacker.close();
 });

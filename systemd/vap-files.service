@@ -1,0 +1,20 @@
+# VAP Files —— 论文/源码分发服务（端口 8080，只读）
+# 日志：journalctl -u vap-files -f
+[Unit]
+Description=VAP static file server (port 8080)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/public-jim
+ExecStart=/usr/bin/node /home/ubuntu/public-jim/_fileserver.mjs /home/ubuntu/public-jim 8080
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=300
+StartLimitBurst=6
+
+[Install]
+WantedBy=multi-user.target

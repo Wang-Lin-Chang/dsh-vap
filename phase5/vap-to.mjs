@@ -166,10 +166,16 @@ function readLedgerLines(filePath) {
     return [];
   }
   const out = [];
+  // R3（生产级加固）：逐行 JSON.parse 必须容错——appendFileSync 非原子，崩溃可留半行；
+  // 坏行（含尾部半行）跳过，绝不让「单行损坏」把 autoRestore 节点打成崩溃循环。
   for (const line of text.split('\n')) {
     const t = line.trim();
     if (!t) continue;
-    out.push(JSON.parse(t));
+    try {
+      out.push(JSON.parse(t));
+    } catch {
+      // 跳过损坏行：从最近一致前缀继续（后续行的块哈希链会自然断在坏行处）
+    }
   }
   return out;
 }
@@ -624,22 +630,57 @@ export function createNode({
   // 重启恢复：从账本读回已提交前缀，验证哈希链 + 区块哈希 + 签名；
   // 并回放重算 highestQC/qcByView/qcByBlockHash/blocks（M12，不猜 —— 只用账本行内
   // 已提交区块自身重算，未提交 QC 的签名不在账本中，故以「已提交区块」为粒度恢复）。
+  // R3（生产级加固）：校验失败不再 throw 打崩启动——截断到「最近一致前缀」并记录
+  // truncatedAt，autoRestore 节点从一致位置继续服务，不再崩溃循环。
   node.restore = function restore() {
     const records = readLedgerLines(node.ledgerFile);
     const blocks = [];
     let prevHash = GENESIS_HASH;
+    let truncatedAt = null;
     for (let i = 0; i < records.length; i++) {
       const rec = records[i];
-      if (rec.height !== i) throw new Error(`restore: ledger height mismatch at index ${i}`);
-      if (rec.prevHash !== prevHash) throw new Error(`restore: ledger chain broken at index ${i}`);
-      const blk = rec.block;
-      if (!blk || blk.blockHash !== hashBlock(blk)) throw new Error(`restore: blockHash mismatch at index ${i}`);
-      const leaderPub = node.peerMap.get(blk.leader);
-      if (!leaderPub || !verifyString(canonicalJson(blockContent(blk)), leaderPub, blk.sig)) {
-        throw new Error(`restore: leader signature mismatch at index ${i}`);
+      let bad = false;
+      try {
+        if (!rec || rec.height !== i) { bad = true; }
+        else if (rec.prevHash !== prevHash) { bad = true; }
+        else {
+          const blk = rec.block;
+          if (!blk || blk.blockHash !== hashBlock(blk)) { bad = true; }
+          else {
+            const leaderPub = node.peerMap.get(blk.leader);
+            if (!leaderPub || !verifyString(canonicalJson(blockContent(blk)), leaderPub, blk.sig)) bad = true;
+            else {
+              blocks.push(blk);
+              prevHash = blk.blockHash;
+            }
+          }
+        }
+      } catch {
+        bad = true; // 畸形块（深层嵌套等）触发 canonicalJson 等异常：视为损坏，截断
       }
-      blocks.push(blk);
-      prevHash = blk.blockHash;
+      if (bad) {
+        truncatedAt = i;
+        break;
+      }
+    }
+    node.lastRestoreError = truncatedAt === null
+      ? null
+      : `ledger invalid at index ${truncatedAt}; restored consistent prefix of ${blocks.length} blocks`;
+    // R3（复验轮发现）：截断后必须把账本压缩为一致前缀（原子重写），
+    // 否则后续新提交 append 在断裂行之后，重启再恢复时新块永久丢失。
+    if (truncatedAt !== null) {
+      try {
+        const raw = fs.readFileSync(node.ledgerFile, 'utf8');
+        const goodLines = raw.split('\n').filter((l) => {
+          const t = l.trim();
+          if (!t) return false;
+          try { JSON.parse(t); return true; } catch { return false; }
+        });
+        const prefix = goodLines.slice(0, blocks.length);
+        const tmp = `${node.ledgerFile}.compact-${crypto.randomBytes(4).toString('hex')}`;
+        fs.writeFileSync(tmp, `${prefix.join('\n')}${prefix.length ? '\n' : ''}`, 'utf8');
+        fs.renameSync(tmp, node.ledgerFile);
+      } catch { /* 压缩失败不阻断恢复（下次启动再截断一次） */ }
     }
 
     node.committed = [];
@@ -683,7 +724,7 @@ export function createNode({
     node.lastCommittedHash = blocks.length ? blocks[blocks.length - 1].blockHash : GENESIS_HASH;
     if (blocks.length) node.view = Number(blocks[blocks.length - 1].view) + 1;
     node.touch();
-    return { restored: blocks.length, blockHashes: blocks.map((b) => b.blockHash) };
+    return { restored: blocks.length, truncatedAt, blockHashes: blocks.map((b) => b.blockHash) };
   };
 
   // health()：共识节点真实状态（M11）。

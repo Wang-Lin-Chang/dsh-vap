@@ -1,0 +1,26 @@
+# dsh-vap 仓库排除清单（2026-08-25 生产级安全加固 S1，复验轮扩展）
+# 结果目录（含实验原始日志/密钥）
+graynet-results/
+# 运维一次性脚本（含服务器凭据）——所有 _ 开头文件
+_*
+# 浏览器接管 profile（含云控制台 cookie，绝不入库）
+_edge-profile/
+_edge-vap/
+# 云凭据与 SSH 材料
+_tencent-*
+.ssh-*
+*.pem
+server-password.txt
+# 节点私钥与账本
+keys/
+ledger/keys/
+n*.pem
+# 依赖与构建产物
+node_modules/
+*.log
+*.aux
+*.toc
+*.out
+# 系统
+.DS_Store
+Thumbs.db

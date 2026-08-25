@@ -1,0 +1,21 @@
+# VAP Relay —— graynet 中继常驻服务（样板：非 root 运行 / 崩溃自拉起 / 开机自启）
+# 日志：journalctl -u vap-relay -f
+[Unit]
+Description=VAP graynet relay (port 42050)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/dsh-vap
+ExecStart=/usr/bin/node /home/ubuntu/dsh-vap/experiments/graynet-experiment.mjs relay --host 0.0.0.0 --port 42050
+Restart=on-failure
+RestartSec=5
+# 防无限重启风暴：5 分钟内最多重启 6 次，超限进入 failed 等待人工
+StartLimitIntervalSec=300
+StartLimitBurst=6
+
+[Install]
+WantedBy=multi-user.target

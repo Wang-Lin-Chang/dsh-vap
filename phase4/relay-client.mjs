@@ -11,6 +11,7 @@
 // 本模块只「搬运与收发」，不复制信封构造/验签/军法/诚实边界等任何判定逻辑。
 
 import net from 'node:net';
+import tls from 'node:tls';
 
 import { encodeFrame, createFrameDecoder } from './relay-server.mjs';
 
@@ -28,6 +29,7 @@ export function createRelayClient({
   port,
   nodeId,
   pubKey,
+  tlsOptions = null, // S6：{ ca }（自签 CA PEM 路径/内容）——设置则走 TLS 并校验服务器证书
 } = {}) {
   if (!nodeId) throw new Error('createRelayClient: nodeId is required');
   if (!Number.isInteger(port)) throw new Error('createRelayClient: port is required');
@@ -71,7 +73,10 @@ export function createRelayClient({
 
   function connectInternal() {
     if (closed) return;
-    const sock = net.createConnection({ host, port });
+    // S6：tlsOptions 提供 ca 时走 TLS（校验服务器证书）；否则明文 TCP。
+    const sock = tlsOptions
+      ? tls.connect({ host, port, ...tlsOptions })
+      : net.createConnection({ host, port });
     const decoder = createFrameDecoder({
       onFrame: (msg) => {
         if (msg && msg.type === 'relay') {
@@ -123,7 +128,8 @@ export function createRelayClient({
       if (!envelope || typeof envelope !== 'object') throw new Error('send: envelope is required');
       if (!isConnected()) return false;
       try {
-        socket.write(encodeFrame({ type: 'relay', to, envelope }));
+        // from=nodeId：让中继能识别发件方（日志/度量），并让接收方 onEnvelope 的 meta.from 正确。
+        socket.write(encodeFrame({ type: 'relay', from: nodeId, to, envelope }));
         return true;
       } catch {
         return false;

@@ -441,7 +441,94 @@ test('restore recovers committed prefix and verifies the hash chain', () => {
   lines[0] = JSON.stringify(rec);
   fs.writeFileSync(path.join(tamperDir, 'ledger-n1.jsonl'), lines.join('\n') + '\n', 'utf8');
   const fresh2 = createNode({ nodeId: 'n1', keyPair: keys[0], n: 4, f: 1, peers, ledgerDir: tamperDir });
-  assert.throws(() => fresh2.restore(), /chain broken|height mismatch|blockHash mismatch/);
+  // R3（生产级加固）：账本被篡改 → restore 不再抛错，而是截断到一致前缀并记录位置
+  // （autoRestore 节点不被损坏账本打成崩溃循环）。
+  const r2 = fresh2.restore();
+  assert.equal(r2.restored, 0, '篡改行之前的区块数（首行即被篡改 → 0 块）');
+  assert.equal(r2.truncatedAt, 0, '截断位置 = 0（首行链断）');
+  assert.ok(fresh2.lastRestoreError && fresh2.lastRestoreError.includes('index 0'), fresh2.lastRestoreError);
+  assert.equal(fresh2.committedHeight, 0);
+});
+
+// ---------------------------------------------------------------------------
+// lock-on-vote 回归（P2）
+// ---------------------------------------------------------------------------
+
+test('vote advances lock to the parent block', () => {
+  const { nodes } = buildWorld();
+  round(nodes, 0); // 创世提案：父块即创世，lock 保持创世（null）
+  assert.equal(nodes[0].lock, null);
+  const block0 = nodes[0].highestQC.blockHash;
+
+  const r1 = round(nodes, 1); // 投票 block1 → lock 推进到 block0
+  assert.ok(r1.qc);
+  for (const n of nodes) {
+    assert.ok(n.lock, 'lock must be set after voting a non-genesis proposal');
+    assert.equal(n.lock.blockHash, block0);
+    assert.equal(n.lock.view, 0, 'lock view must equal the parent block view');
+  }
+});
+
+test('lock rejects a proposal that does not extend the locked block', () => {
+  const { nodes } = buildWorld();
+  round(nodes, 0);
+  round(nodes, 1); // 投票 block1 → node.lock = block0
+  const node = nodes[0];
+  assert.ok(node.lock && node.lock.blockHash);
+
+  // 隔离 lock 检查：把 lock 推到一条与 highestQC 无关的分支（模拟此前在冲突分支投过票），
+  // 再投一个正常扩展 highestQC 的提案 —— baseline 检查通过，但 lock 检查必须拒绝。
+  node.lock = { blockHash: 'FOREIGN-BRANCH', view: 999 };
+
+  const view = 2;
+  const leaderId = leaderOf(view, node.roster.map((r) => r.nodeId));
+  const leader = nodes.find((n) => n.nodeId === leaderId);
+  const prop = leader.signProposal({ view, leader: leaderId, parentHash: node.highestQC.blockHash, txs: [] });
+
+  const r = node.vote(prop);
+  assert.equal(r.voted, false);
+  assert.ok(r.reason.includes('lock'), r.reason);
+
+  // lock 回 null（创世）后，同一提案通过。
+  node.lock = null;
+  assert.equal(node.vote(prop).voted, true);
+});
+
+test('isDescendant walks the parent chain correctly with cycle guard', () => {
+  const { nodes } = buildWorld();
+  const r0 = round(nodes, 0);
+  const r1 = round(nodes, 1);
+  const r2 = round(nodes, 2);
+  const r3 = round(nodes, 3);
+  const b0 = r0.proposal.blockHash;
+  const b1 = r1.proposal.blockHash;
+  const b2 = r2.proposal.blockHash;
+  const b3 = r3.proposal.blockHash;
+  const node = nodes[0];
+
+  // 三代链上祖先判定。
+  assert.equal(node.isDescendant(b3, b0), true, 'b0 is an ancestor of b3');
+  assert.equal(node.isDescendant(b3, b1), true);
+  assert.equal(node.isDescendant(b2, b0), true);
+  assert.equal(node.isDescendant(b3, b3), true, 'self is its own descendant');
+
+  // 反向 / 无关块判定 false。
+  assert.equal(node.isDescendant(b0, b3), false, 'reverse is not a descendant');
+  assert.equal(node.isDescendant(b3, 'UNRELATED-HASH'), false);
+
+  // 创世祖先：一切块都扩展创世。
+  assert.equal(node.isDescendant(b3, GENESIS_HASH), true);
+
+  // 环保护：自环块在深度上限内返回 false（不挂死）。
+  node.blocks.set('SELF-LOOP', {
+    view: 999,
+    leader: 'n1',
+    parentHash: 'SELF-LOOP',
+    txs: [],
+    blockHash: 'SELF-LOOP',
+    sig: '',
+  });
+  assert.equal(node.isDescendant('SELF-LOOP', 'FOREIGN'), false);
 });
 
 // ---------------------------------------------------------------------------

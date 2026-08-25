@@ -477,7 +477,7 @@ test('nonce：send 自动带 nonce（16 hex）', () => {
   const node = createVapNode({ nodeId: 'scout-01', root });
   const envelope = node.send(validSendParams());
   assert.equal(typeof envelope.nonce, 'string');
-  assert.match(envelope.nonce, /^[0-9a-f]{16}$/);
+  assert.match(envelope.nonce, /^[0-9a-f]{16,32}$/);
 });
 
 test('nonce：签名绑定 nonce（篡改 nonce 验签失败）', () => {

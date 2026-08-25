@@ -39,7 +39,9 @@ const BOUNDARIES = new Set(['L2a', 'L1', 'L0']);
 //   NONCE_PATTERN   nonce 只允许 16 位小写十六进制（node.send 的生成格式），
 //                   任何含 '/'、'\'、'..' 或超长的取值都不得参与路径拼接；
 //   TASK_ID_PATTERN taskId 只允许字母/数字/下划线/连字符（1-64），杜绝 inbox 锁路径穿越。
-export const NONCE_PATTERN = /^[0-9a-f]{16}$/;
+// S9（生产级加固）：nonce 放宽为 16~32 位十六进制——旧信封（16 hex）兼容，
+// 新生成用 32 hex（128 位随机，生日界 2^64）。
+export const NONCE_PATTERN = /^[0-9a-f]{16,32}$/;
 export const TASK_ID_PATTERN = /^[0-9a-zA-Z_-]{1,64}$/;
 
 export function isValidNonce(nonce) {
@@ -54,16 +56,41 @@ export function isValidTaskId(taskId) {
 // canonicalJson —— 规范化 JSON：键按字典序递归排序、无空白
 // ---------------------------------------------------------------------------
 
-function sortObjectDeep(value) {
+// S11（生产级加固，fuzz 实证升格 P0）：深度/节点预算 + 循环引用检测。
+// 深层嵌套（~5000 层对象）此前触发未捕获 RangeError 栈溢出 → 进程崩溃；
+// 循环引用此前无限递归。现在超限抛可控 TypeError/RangeError，由调用方 catch 后拒件。
+export const MAX_CANONICAL_DEPTH = 64;      // 嵌套深度上限（正常信封 < 10 层）
+export const MAX_CANONICAL_NODES = 100000;  // 总节点数预算（防超宽对象 DoS）
+
+function sortObjectDeep(value, depth = 0, seen = null, counter = { n: 0 }) {
+  counter.n += 1;
+  if (counter.n > MAX_CANONICAL_NODES) {
+    throw new RangeError(`canonicalJson: node budget exceeded (${MAX_CANONICAL_NODES})`);
+  }
   if (Array.isArray(value)) {
-    return value.map(sortObjectDeep);
+    if (depth >= MAX_CANONICAL_DEPTH) {
+      throw new RangeError(`canonicalJson: depth limit ${MAX_CANONICAL_DEPTH} exceeded`);
+    }
+    return value.map((v) => sortObjectDeep(v, depth + 1, seen, counter));
   }
   if (value && typeof value === 'object') {
-    const out = {};
-    for (const key of Object.keys(value).sort()) {
-      out[key] = sortObjectDeep(value[key]);
+    if (depth >= MAX_CANONICAL_DEPTH) {
+      throw new RangeError(`canonicalJson: depth limit ${MAX_CANONICAL_DEPTH} exceeded`);
     }
-    return out;
+    const pathSet = seen || new Set();
+    if (pathSet.has(value)) {
+      throw new TypeError('canonicalJson: circular reference');
+    }
+    pathSet.add(value);
+    try {
+      const out = {};
+      for (const key of Object.keys(value).sort()) {
+        out[key] = sortObjectDeep(value[key], depth + 1, pathSet, counter);
+      }
+      return out;
+    } finally {
+      pathSet.delete(value);
+    }
   }
   return value;
 }
@@ -239,7 +266,26 @@ export function claimNonce(root, nonce) {
     throw err;
   }
   fs.closeSync(fd);
+  pruneSeenNonces(dir); // S9：低频过期清理（防目录无限增长）
   return true;
+}
+
+// S9（生产级加固）：seen-nonces 过期清理。每 N 次认领扫描一次，删除
+// 超过 SEEN_NONCE_TTL_MS（默认 30 天）未触达的标记文件——防重放窗口即 TTL。
+const SEEN_NONCE_TTL_MS = 30 * 24 * 3600 * 1000;
+let nonceClaimCounter = 0;
+function pruneSeenNonces(dir) {
+  nonceClaimCounter += 1;
+  if (nonceClaimCounter % 100 !== 0) return;
+  const cutoff = Date.now() - SEEN_NONCE_TTL_MS;
+  try {
+    for (const name of fs.readdirSync(dir)) {
+      const p = path.join(dir, name);
+      try {
+        if (fs.statSync(p).mtimeMs < cutoff) fs.unlinkSync(p);
+      } catch { /* 单文件异常不影响清理 */ }
+    }
+  } catch { /* 目录不可读时跳过本轮 */ }
 }
 
 // ---------------------------------------------------------------------------
@@ -525,7 +571,7 @@ export function createVapNode({ nodeId, root, keyPair, now, persistKeys = false 
     const envelope = {
       v: 1,
       id: `evt-${crypto.randomBytes(8).toString('hex')}`,
-      nonce: crypto.randomBytes(8).toString('hex'),
+      nonce: crypto.randomBytes(16).toString('hex'), // S9：128 位随机 nonce（32 hex）
       ts: nowFn().toISOString(),
       from: { nodeId: node.nodeId, pubKey: node.pubKey },
       to: to || 'brain',
