@@ -193,7 +193,9 @@ export function createMembershipNode({
   function recomputeQuorum() {
     node.n = node.roster.length;
     node.f = Math.floor((node.n - 1) / 3);
-    node.threshold = 2 * node.f + 1;
+    // TLC 实测修正：与 phase5 同——n>3f+1 时 2f+1 诚实票下界过低（同视图双 QC 反例），
+    // 门槛 = max(2f+1, ⌈2n/3⌉)。
+    node.threshold = Math.max(2 * node.f + 1, Math.ceil((2 * node.n) / 3));
   }
 
   function joinSubjectOf(tx) {

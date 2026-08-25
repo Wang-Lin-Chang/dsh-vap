@@ -174,7 +174,7 @@ test('join activates at h+2 with 2/3 endorsement (roster 4→5, f/threshold reco
   assert.equal(nodes[0].roster.length, 5, 'roster must be 5 after h+2');
   assert.equal(nodes[0].n, 5);
   assert.equal(nodes[0].f, 1);
-  assert.equal(nodes[0].threshold, 3);
+  assert.equal(nodes[0].threshold, 4, 'TLC 修正：N=5 门槛 = max(2f+1, ⌈2n/3⌉) = 4');
   assert.ok(nodes[0].peerMap.has('n5'));
 });
 
@@ -248,13 +248,13 @@ test('slash commit → signature immediately not counted, roster delayed 2 block
   assert.equal(after.ok, false, 'n4 sig must not count after slash commit');
   assert.equal(after.kept, 2);
 
-  // h+2 后 roster 掉 n4 → n=3、f=0、threshold=1。
+  // h+2 后 roster 掉 n4 → n=3、f=0、threshold=max(2f+1, ⌈2n/3⌉)=2（TLC 修正）。
   round(nodes, 9, { voters: [nodes[0], nodes[1], nodes[2]] });
   round(nodes, 10, { voters: [nodes[0], nodes[1], nodes[2]] });
   assert.equal(nodes[0].roster.length, 3, 'roster must drop n4 after h+2');
   assert.equal(nodes[0].n, 3);
   assert.equal(nodes[0].f, 0);
-  assert.equal(nodes[0].threshold, 1);
+  assert.equal(nodes[0].threshold, 2);
 });
 
 // ---------------------------------------------------------------------------

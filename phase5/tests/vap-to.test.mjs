@@ -87,6 +87,46 @@ function tx(over = {}) {
 // 轮次状态机 / leader 轮换
 // ---------------------------------------------------------------------------
 
+test('TLC 实测修正回归：N=5 拜占庭票分发下同视图双 QC 不可成立（threshold=4）', () => {
+  // TLC 反例（TLC-RESULTS.md §6）：n=5/f=1 时 threshold=2f+1=3 的诚实票下界只有 2，
+  // 拜占庭节点向两个冲突提案各投一票，两个 QC 各拿 2 诚实 + 1 拜占庭 = 3 票同时成立
+  // → quorum 交集论证失效（同视图双 QC）。修正后 threshold=⌈2n/3⌉=4，两 QC 均不成立。
+  const keys = [0, 1, 2, 3, 4].map(() => makeKeys());
+  const ids = ['n1', 'n2', 'n3', 'n4', 'n5'];
+  const peers = ids.map((id, i) => ({ nodeId: id, pubKey: keys[i].pubKey }));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-to-n5-'));
+  const nodes = ids.map((id, i) => createNode({ nodeId: id, keyPair: keys[i], n: 5, f: 1, peers, ledgerDir: dir }));
+  try {
+    assert.equal(nodes[0].threshold, 4, 'N=5/f=1 门槛必须是 ⌈2n/3⌉=4');
+
+    // n1（view 0 的 leader）构造两个冲突提案 B1/B2（同 view 0，不同 tx）
+    const n1 = nodes[0];
+    n1.submitTx(tx({ nonce: 'a-1', payload: { a: 1 } }));
+    const p1 = n1.propose(0);
+    assert.ok(p1.proposal, JSON.stringify(p1));
+    const B1 = p1.proposal;
+    const B2 = n1.signProposal({ view: 0, leader: 'n1', parentHash: GENESIS_HASH, txs: [{ type: 'commit', from: 'client', nonce: 'a-2', payload: { a: 2 } }] });
+
+    // 诚实票：n1、n2 投 B1；n3、n4 投 B2；拜占庭 n5 两票都投
+    const votesB1 = [rawVote(n1, B1), rawVote(nodes[1], B1), rawVote(nodes[4], B1)];
+    const votesB2 = [rawVote(nodes[2], B2), rawVote(nodes[3], B2), rawVote(nodes[4], B2)];
+
+    // 用旁观节点 n2 收 B1 票、n3 收 B2 票（activeProposal 绑定在各自节点）
+    nodes[1].vote(B1);
+    const qc1 = nodes[1].collectQC(votesB1);
+    nodes[2].vote(B2);
+    const qc2 = nodes[2].collectQC(votesB2);
+
+    // 3 票 < threshold=4：两个 QC 都必须不成立（旧门槛 3 下这里双双成立 = 违约）
+    assert.equal(qc1.ok, false, `B1 的 3 票（2 诚实+1 拜占庭）低于门槛 4 不得成 QC: ${JSON.stringify(qc1)}`);
+    assert.equal(qc2.ok, false, `B2 的 3 票低于门槛 4 不得成 QC: ${JSON.stringify(qc2)}`);
+    assert.equal(nodes[1].qcByBlockHash.has(B1.blockHash), false, 'B1 不得进 QC 表');
+    assert.equal(nodes[2].qcByBlockHash.has(B2.blockHash), false, 'B2 不得进 QC 表');
+  } finally {
+    for (const n of nodes) n.shutdown ? n.shutdown() : null;
+  }
+});
+
 test('leader rotation: leader = view % n and propose/view advance monotonically', () => {
   const { nodes, ids } = buildWorld();
   const sorted = nodes[0].roster.map((r) => r.nodeId);

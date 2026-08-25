@@ -253,7 +253,10 @@ export function createNode({
   if (!peerMap.has(nodeId)) throw new Error('createNode: nodeId must be in peers');
   if (peerMap.get(nodeId) !== pubKey) throw new Error('createNode: self pubKey must match peers roster');
 
-  const threshold = 2 * f + 1;
+  // QC 门槛（TLC 实测修正）：2f+1 仅在 n=3f+1 时与 ⌈2n/3⌉ 相等；n>3f+1（如 N=5/6）时
+  // 2f+1 的诚实票下界过低，TLC 给出「同视图双 QC」（两个 QC 的诚实票互不相交）诚实反例。
+  // 正确门槛 = max(2f+1, ⌈2n/3⌉)，保证任意两个 QC 的诚实票集合交集非空（quorum 交集论证成立）。
+  const threshold = Math.max(2 * f + 1, Math.ceil((2 * n) / 3));
   // 安全（M6）：nodeId 参与账本文件名拼接。白名单内的 id 保留可读文件名；
   // 任何越界字符（'/'、'\'、'..'、超长等）一律改用 sha256 摘要文件名 ——
   // 文件名不可控则路径穿越无从下手，nodeId 本体仍逐行记录在账本内容里（见 commitBlock）。

@@ -149,10 +149,19 @@
 6. **实现对照**：每条 P 规则标注了 `phase5/vap-to.mjs` 与 `phase6/vap-to-membership.mjs` 的对应函数（lock-on-vote 已落地，220 测试全绿）；若实现与 P1/P2 不符，本证明不适用于该实现；
 7. **重启语义**：lock 不持久化，节点重启后从已提交前缀重建（lock 置 null 等价创世）——L4 的归纳在重启边界处重新起基，安全性不受影响（前缀由 C1 保障）。
 
----
+## 4.1 TLC 机器检查实录（2026-08-25，tlaplus/TLC-RESULTS.md）
+
+TLA+ 规格经 TLC 2.19 真实运行（老服务器 2 核/3.6GiB）：
+
+- **安全不变式 7 条全部 PASS**：TypeOK / HonestVotePerView（A2）/ QcUniquePerView（L3）/ LockDominatesVotes（L4）/ CommittedImpliesCertified / NoConflictCommit（定理 T）/ NoRollback（C1）——Block=3/MaxView=2 完整穷举 80,820 状态「No error」；提交类三条在 Block=4/MaxView=3 非空洞规模 95.9 万状态未违约（部分检查）。
+- **ViewProgress（活性，视图推进）PASS**：完整穷举 + WF(ViewChange) 直接可得。
+- **EventuallyCommit（活性，最终提交）FAIL——预期诚实结果**：完全对抗模型下反例（拜占庭 leader 提父块无 QC 的高视图块，诚实节点跳跃投票 → 无 3-chain → 永无提交）；「稳定 leader」细化下**仍 FAIL**——反例把活性缺口精确定位到模型省略的「扩展本地最高 QC」baseline 检查（TLA-REPORT §2.6 的诚实标注处），恢复活性需 baseline/最高-QC 机制（V2 范畴，见 §5 开放问题）。
+- **Quorum 参数化边界（TLC 抓出的实现 bug，已修）**：`threshold = 2f+1` 仅在 n=3f+1 时等价于 ⌈2n/3⌉；n>3f+1（N=5/6）时诚实票下界过低，TLC 给出「同视图双 QC」（两个 QC 诚实票互不相交）诚实反例。实现已改为 `max(2f+1, ⌈2n/3⌉)`（phase5 L256、phase6 recomputeQuorum），回归测试钉死（N=5 拜占庭票分发下双 QC 均不成立）。
+- **N 上限**：提交类性质（MaxView≥3）状态空间 ~10⁶，老服务器上实用 N 上限 = 4；N=5/6 的 Quorum 反例在 Block=3/MaxView=2 小规模即检出。
 
 ## 5. 开放问题
 
 1. **多笔变更同块**：M3 覆盖单笔变更；同块内多次 join/expel 的 A5 重叠显式校验与完整证明待补；
 2. **机器检查**：本证明待 Coq/Lean 形式化（手工证明 → 机器证明）；
-3. **f_old ≠ f_new**：M2 仅证等规模变更的负结果；异规模变更的诚实交集下界公式待补。
+3. **f_old ≠ f_new**：M2 仅证等规模变更的负结果；异规模变更的诚实交集下界公式待补；
+4. **活性恢复（V2）**：TLC 实证活性缺口 = 缺「扩展本地最高 QC」baseline 检查（诚实节点可跳跃投票）；恢复方案 = vote 前置 baseline 校验（提案父块必须是本地最高 QC 的扩展），是下一阶段设计项。
