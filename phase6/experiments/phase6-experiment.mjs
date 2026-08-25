@@ -180,7 +180,7 @@ function experimentD1() {
     n5FirstBlockView: n5FirstBlock ? n5FirstBlock.view : null,
     n5AgreesWithOriginalNodes: n5Agrees,
     fiveNodeConsensusAdvanced: advanced,
-    pass: joinCommitted && rosterBeforeWindow === 4 && rosterAfter === 5 && n5InRoster && fAfter === 1 && thresholdAfter === 3 && n5Committed >= 1 && n5Agrees && advanced,
+    pass: joinCommitted && rosterBeforeWindow === 4 && rosterAfter === 5 && n5InRoster && fAfter === 1 && thresholdAfter === 4 && n5Committed >= 1 && n5Agrees && advanced,
   };
 }
 
@@ -253,7 +253,7 @@ function experimentD2() {
       rosterBeforeWindow === 4 &&
       rosterAfter === 3 &&
       fAfter === 0 &&
-      thresholdAfter === 1 &&
+      thresholdAfter === 2 && // Quorum 修正后 n=3/f=0 → max(2f+1,⌈2n/3⌉)=2
       sigExcluded &&
       threeNodeConsensusAdvanced,
   };
