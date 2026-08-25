@@ -1,6 +1,6 @@
 {
   "experiment": "phase6-membership",
-  "generatedAt": "2026-08-20T11:59:54.613Z",
+  "generatedAt": "2026-08-25T21:34:21.880Z",
   "zeroDependency": true,
   "reusedModules": [
     "../vap-core.mjs",
@@ -23,9 +23,9 @@
     "rosterAfter": 5,
     "n5InRoster": true,
     "fAfter": 1,
-    "thresholdAfter": 3,
-    "n5CommittedBlocks": 1,
-    "n5FirstBlockView": 7,
+    "thresholdAfter": 4,
+    "n5CommittedBlocks": 8,
+    "n5FirstBlockView": 0,
     "n5AgreesWithOriginalNodes": true,
     "fiveNodeConsensusAdvanced": true,
     "pass": true
@@ -40,7 +40,7 @@
     "rosterBeforeWindow": 4,
     "rosterAfter": 3,
     "fAfter": 0,
-    "thresholdAfter": 1,
+    "thresholdAfter": 2,
     "signatureExcludedImmediately": true,
     "threeNodeConsensusAdvanced": true,
     "pass": true

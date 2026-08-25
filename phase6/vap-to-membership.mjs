@@ -973,6 +973,50 @@ export function createMembershipNode({
     return { ...base, membershipReplayed: true, rosterSize: node.roster.length, expelled: [...node.expelled] };
   };
 
+  // ---- 新节点状态同步（核心承诺：join 后新节点能参与共识） ----
+
+  // syncStateFrom(source)：新节点加入时从既有诚实节点采纳「已提交前缀 + 最高 QC + 成员状态」。
+  // 只同步共识/成员状态，不改本节点身份（nodeId / pubKey / privateKey / ledgerFile）与未提交
+  // mempool / 本轮投票状态（新节点从同步后的视图起诚实参与）。
+  // 背景：新节点若以创世态直接参与，其 highestQC/lock 落后于主链，在 baseline「提案父块须
+  // 扩展本地最高 QC」+ lock 安全规则下无法投票/提案，永不提交 —— 必须先同步再上链。
+  node.syncStateFrom = function syncStateFrom(source) {
+    if (!source || typeof source !== 'object') {
+      return { ok: false, reason: 'syncStateFrom: source required' };
+    }
+    // 共识状态：已提交前缀（哈希链）、最高 QC、锁、当前视图。
+    node.committed = Array.isArray(source.committed) ? source.committed.slice() : [];
+    node.committedHashes = new Set(source.committedHashes || []);
+    node.committedHeight = Number.isInteger(source.committedHeight) ? source.committedHeight : 0;
+    node.lastCommittedHash = typeof source.lastCommittedHash === 'string' ? source.lastCommittedHash : GENESIS_HASH;
+    node.seenNonces = new Set(source.seenNonces || []);
+    node.blocks = source.blocks instanceof Map ? new Map(source.blocks) : new Map();
+    node.qcByView = source.qcByView instanceof Map ? new Map(source.qcByView) : new Map();
+    node.qcByBlockHash = source.qcByBlockHash instanceof Map ? new Map(source.qcByBlockHash) : new Map();
+    node.childIndex = source.childIndex instanceof Map ? new Map(source.childIndex) : new Map();
+    node.highestQC = source.highestQC || null;
+    node.lock = source.lock || null;
+    node.view = Number.isInteger(source.view) ? source.view : 0;
+    // 成员状态：已提交 membership nonce / 除名集 / 已到期变更 / 审计留痕。
+    node.membershipNonces = new Set(source.membershipNonces || []);
+    node.expelled = new Set(source.expelled || []);
+    node.pendingChanges = Array.isArray(source.pendingChanges) ? source.pendingChanges.map((c) => ({ ...c })) : [];
+    node.membershipLog = Array.isArray(source.membershipLog) ? source.membershipLog.slice() : [];
+    // 未提交 mempool 与本轮投票状态清零：新节点不继承 source 的瞬时状态，从同步后的视图起诚实参与。
+    node.votedViews.clear();
+    node.pendingTxs = [];
+    node.pendingNonces.clear();
+    node.activeProposal = null;
+    node.touch();
+    return {
+      ok: true,
+      syncedCommitted: node.committed.length,
+      syncedQC: node.qcByBlockHash.size,
+      rosterSize: node.roster.length,
+      threshold: node.threshold,
+    };
+  };
+
   // health()：成员共识节点真实状态（M11）。与 phase5 health 同构（expelled 为计数）。
   node.health = function health() {
     return {

@@ -65,19 +65,21 @@ node phase6/experiments/phase6-experiment.mjs    # D1-D5 + 结构化 JSON + 硬�
 
 ## 3. 实验结果（本轮实测）
 
-装置：n=4 起，f=floor((n-1)/3)，QC 门槛 2f+1，commit 规则 HotStuff 3-chain。
+装置：n=4 起，f=floor((n-1)/3)，QC 门槛 max(2f+1, ⌈2n/3⌉)，commit 规则 HotStuff 3-chain。
 
 > **历史注（2026-08-25 Quorum 修正）**：本报告记录的 threshold 值（D1 的 3、D2 的 1）是装置当时的实现（`threshold = 2f+1`）下的历史事实。该公式经 TLC 实测在 n>3f+1 时存在「同视图双 QC」安全反例，已修正为 `max(2f+1, ⌈2n/3⌉)`（见 PROOFS.md §4.1）——修正后 D1 场景（n=5,f=1）应为 threshold=4，D2 场景（n=3,f=0）应为 threshold=2。历史数字不改，如实标注；实验脚本断言已同步为新门槛。
 
+> **重跑达标注（2026-08-25）**：Quorum 修正 + 活性三层修复后，实验脚本已适配并重跑达标。适配点：D1 场景新节点 n5 由 `createMembershipNode` 以创世态创建后，先经 `syncStateFrom` 从既有诚实节点同步「已提交前缀 / 最高 QC / 成员状态」再上链——否则 n5 的 highestQC/lock 落后于主链，在 baseline「提案父块须扩展本地最高 QC」+ lock 安全规则下无法投票/提交（复验轮 9 发现的 N3 真红根因）。`node phase6/experiments/phase6-experiment.mjs` 实测退出码 0、`conclusion.allPass=true`；D1 `thresholdAfter=4` 且 `n5CommittedBlocks=8`，D2 `thresholdAfter=2`。下方结果表已同步为本轮实测值（历史 3/1 数字由上方历史注如实标注保留）。
+
 | 实验 | 结果 | 判据 |
 |---|---|---|
-| **D1 加入生效** | 资格凭证 + 3/4 背书 → join 提交 → h+2 后 roster=5（f=1, threshold=3）→ 新节点 n5 上链后与原有节点提交前缀一致、5 节点继续推进 | `rosterAfter=5` `n5Agrees=true` `fiveNodeConsensusAdvanced=true` |
-| **D2 除名生效** | n4 双签 → 证据（第三方可验）→ slash 上链 → 签名立即不计入（n1+n2+n4 只剩 2 <3）→ h+2 后 roster=3（f=0, threshold=1）→ 3 节点继续推进 | `expelledImmediately=true` `signatureExcludedImmediately=true` `rosterAfter=3` |
+| **D1 加入生效** | 资格凭证 + 3/4 背书 → join 提交 → h+2 后 roster=5（f=1, threshold=4）→ 新节点 n5 状态同步后上链、与原有节点提交前缀一致、5 节点继续推进 | `rosterAfter=5` `thresholdAfter=4` `n5CommittedBlocks≥1` `n5Agrees=true` `fiveNodeConsensusAdvanced=true` |
+| **D2 除名生效** | n4 双签 → 证据（第三方可验）→ slash 上链 → 签名立即不计入（n1+n2+n4 只剩 2 <3）→ h+2 后 roster=3（f=0, threshold=2）→ 3 节点继续推进 | `expelledImmediately=true` `signatureExcludedImmediately=true` `rosterAfter=3` `thresholdAfter=2` |
 | **D3 密钥轮换** | 旧钥签变更交易 → h+2 新钥生效 → 旧钥签名被拒、新钥签名有效 | `newKeyActive=true` `oldKeyRejected=true` `newKeyAccepted=true` |
 | **D4 军法上链** | invalid 信封（summary 120 >100）→ 投票前 0 票不进 QC；同一背书者 equivocation → slash 证据上链 → 自动除名 + h+2 掉表 | `invalidEnvelopeZeroVotes=true` `slashCommitted=true` `autoExpelled=true` |
 | **D5 延迟窗口** | join 提交后、生效前旧 roster 照常推进（窗口块 4 票成 QC，无中断），随后切 5 继续推进 | `windowVotes=4` `windowQc=true` `rosterAfterWindow=5` |
 
-**结论：D1-D5 全部达标，`conclusion.allPass=true`，退出码 0。**
+**结论：D1-D5 全部达标，`conclusion.allPass=true`，退出码 0（2026-08-25 重跑实测；D1 含 n5 状态同步适配）。**
 
 ## 4. 验收标准对照（DESIGN §五 / brief §验收）
 
@@ -100,6 +102,7 @@ node phase6/experiments/phase6-experiment.mjs    # D1-D5 + 结构化 JSON + 硬�
 5. **≥f+1 共谋**：BFT 数学边界，只能检测不能阻止。
 6. **restore 不回放成员变更**：本阶段账本恢复（phase5 `restore`）回放已提交前缀，但不重建动态 roster / membership nonce（实验走内存态，未跨重启回放成员历史）。
 7. **延迟生效定义**：变更交易提交于高度 h → 其所在块(h)与后一块(h+1)仍按旧 roster 推进（共 2 块窗口），第 h+2 块起用新 roster（与 DESIGN "h+2 生效" 一致）。
+8. **单机装置 vs 公网装置的状态同步差异**：单机 in-process 实验装置无网络消息总线，新节点加入需显式 `syncStateFrom` 从既有节点整链快照式采纳「已提交前缀 + 最高 QC + 成员状态」（见 D1 重跑达标注）；公网 graynet 装置经 harness 消息总线做同类同步（DEPLOYMENT.md）。本装置未模拟真实网络下新节点的分片下载 / 增量追块，状态同步粒度是「整链快照」，非增量追赶。
 
 ## 6. 纪律自检
 

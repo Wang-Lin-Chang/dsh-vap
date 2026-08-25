@@ -151,10 +151,15 @@ function experimentD1() {
   const thresholdAfter = w.nodes[0].threshold;
 
   // 创建 n5 节点，加入 5 节点共识继续推进。
+  // 状态同步（核心承诺「join 后新节点能参与共识」）：新节点以创世态创建后，先从既有诚实节点
+  // 同步已提交前缀 / 最高 QC / 成员状态；否则 n5 的 highestQC/lock 落后于主链，在 baseline
+  // 「提案父块须扩展本地最高 QC」+ lock 安全规则下无法投票/提案，永远无法提交（D1 真红根因）。
   const peers5 = [...w.peers, { nodeId: 'n5', pubKey: n5keys.pubKey }];
   const n5node = createMembershipNode({
     nodeId: 'n5', keyPair: n5keys, n: 5, f: 1, peers: peers5, ledgerDir: w.dir, credentialCtx: w.credentialCtx,
   });
+  const sync = n5node.syncStateFrom(w.nodes[0]);
+  if (!sync.ok) return { label: 'D1 join activation', pass: false, error: sync.reason };
   const fiveNodes = [...w.nodes, n5node];
 
   const r7 = round(fiveNodes, 7);

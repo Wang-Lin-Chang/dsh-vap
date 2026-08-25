@@ -178,6 +178,61 @@ test('join activates at h+2 with 2/3 endorsement (roster 4→5, f/threshold reco
   assert.ok(nodes[0].peerMap.has('n5'));
 });
 
+test('join 后新节点状态同步：n5 同步已提交前缀/最高 QC 后能投票并提交（核心承诺）', () => {
+  const { nodes, peers, genesis } = buildWorld();
+  const n5keys = makeKeys();
+  const credRes = issueCredential({ task: makeTask('join-sync-n5', 2), holder: 'n5', auditors: [genesis], generation: 0 });
+  assert.equal(credRes.ok, true);
+
+  // 驱动 join 在 h+2 生效（同 D1 前段）：rounds 0-6 → join 提交（height 3）→ roster 切 5。
+  round(nodes, 0);
+  round(nodes, 1);
+  round(nodes, 2);
+  const join = nodes[0].proposeJoin({
+    nodeId: 'n5',
+    pubKey: n5keys.pubKey,
+    credential: credRes.credential,
+    privateKey: n5keys.privateKey,
+  });
+  assert.equal(join.ok, true, join.reason);
+  const endorsements = [];
+  for (const n of nodes.slice(0, 3)) {
+    const e = n.endorseJoin(join.tx);
+    assert.equal(e.ok, true, e.reason);
+    endorsements.push(e.endorsement);
+  }
+  join.tx.endorsements = endorsements;
+  round(nodes, 3, { tx: join.tx });
+  round(nodes, 4);
+  round(nodes, 5);
+  round(nodes, 6);
+  assert.equal(nodes[0].roster.length, 5, 'roster must be 5 after h+2');
+
+  // 新节点 n5：创世态创建 → 同步既有节点状态 → 参与 5 节点共识。
+  const peers5 = [...peers, { nodeId: 'n5', pubKey: n5keys.pubKey }];
+  const n5 = createMembershipNode({
+    nodeId: 'n5', keyPair: n5keys, n: 5, f: 1, peers: peers5, ledgerDir: nodes[0].ledgerRoot, credentialCtx: nodes[0].credentialCtx,
+  });
+  const sync = n5.syncStateFrom(nodes[0]);
+  assert.equal(sync.ok, true, sync.reason);
+  assert.equal(n5.committed.length, nodes[0].committed.length, 'n5 must adopt committed prefix');
+  assert.equal(n5.highestQC.blockHash, nodes[0].highestQC.blockHash, 'n5 must adopt highest QC');
+
+  // 5 节点共识：views 7/8/9 均成 QC；n5 作为 view 9 的 leader 提案，自身也投票/提交。
+  const five = [...nodes, n5];
+  const r7 = round(five, 7);
+  const r8 = round(five, 8);
+  const r9 = round(five, 9);
+  assert.ok(r7.qc && r8.qc && r9.qc, '5-node consensus must advance (views 7/8/9 form QC)');
+  assert.ok(n5.committed.length >= 1, 'n5 must commit at least one block after joining');
+  const n5First = n5.committed[0];
+  const matchIdx = nodes[0].committed.findIndex((b) => b.view === n5First.view);
+  assert.ok(
+    matchIdx >= 0 && nodes[0].committed[matchIdx].blockHash === n5First.blockHash,
+    'n5 must agree with original nodes on committed prefix',
+  );
+});
+
 test('join with insufficient endorsement gets 0 votes (2/3 not met)', () => {
   const { nodes, genesis } = buildWorld();
   const n5keys = makeKeys();

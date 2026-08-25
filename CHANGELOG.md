@@ -25,7 +25,7 @@ Phase 3/5 共识加固、中继 TLS 与生产监控全部落地并带回归。
 
 - Phase 3 分布式 2/3 背书与 Phase 5 锁步 QC 链的生产级加固回归补强（见 `phase3/P3-REPORT.md`、`phase5/P5-REPORT.md`）。
 - **Quorum 门槛修正（TLC 实测）**：`threshold` 由 `2f+1` 改为 `max(2f+1, ⌈2n/3⌉)`——TLC 在 n>3f+1（N=5/6）给出「同视图双 QC」诚实反例；回归测试钉死（见 PROOFS.md §4.1）。
-- **活性三层修复（TLC 驱动）**：① baseline/最高-QC 扩展检查（消除跳跃投票）→ ② Certified(parent) 投票前置（消除投未认证后代）→ ③ view-change/new-view 协议（签名绑定 + 聚合最高 QC 作锚）。TLC 机器验证：7 条安全不变式完整穷举 PASS；**稳定 leader + GST 下 EventuallyCommit PASS（62,064 状态）**；完全对抗模型 FAIL = FLP 下界（实现侧 detectEquivocation 除名兜底）。全程记录见 `tlaplus/TLC-RESULTS.md` 与 PROOFS.md §4.1/§5.4。
+- **活性三层修复（TLC 驱动）**：① baseline/最高-QC 扩展检查（消除跳跃投票）→ ② Certified(parent) 投票前置（消除投未认证后代）→ ③ view-change/new-view 协议（签名绑定 + 聚合最高 QC 作锚）。TLC 机器验证：7 条安全不变式完整穷举 PASS；**稳定 leader + GST 下 EventuallyCommit PASS（62,064 状态）**；完全对抗模型 FAIL = FLP 下界（实现侧 detectEquivocation 除名兜底）。全程记录见 `tlaplus/TLC-RESULTS.md` 与 PROOFS.md §4.1/§5 开放问题第 4 条。
 
 ### TLS 与监控
 
