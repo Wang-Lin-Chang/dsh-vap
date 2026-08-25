@@ -5,7 +5,7 @@
 //       ⑥ ipv6-direct：双 GUA 时前插（direct 之后）且 target 指 peer v6；⑦ ULA/fe80 不误判（假阳性排除）。
 import { buildExecPlan, isGlobalV6 } from './punch-chain.mjs';
 
-const peerMapping = { ip: '101.42.23.246', port: 46501 };
+const peerMapping = { ip: '203.0.113.10', port: 46501 }; // 示例映射（RFC 5737 文档保留地址，非生产 IP）
 const GUA_A = [{ ip: '2409:8a3c:17d0:5100::1' }];
 const GUA_B = [{ ip: '2402:4e00:1209:c100::2' }];
 const cases = [
@@ -151,7 +151,7 @@ if (!(dcStep && dcStep.target && dcStep.target.ip === peerMapping.ip && dcStep.t
 // 额外断言：isGlobalV6 过滤语义
 const v6filter = [
   ['2402:4e00::1', true], ['2409:8a3c::1', true], ['fd7a:115c:a1e0::1', false],
-  ['fe80::1', false], ['::1', false], ['101.42.23.246', false],
+  ['fe80::1', false], ['::1', false], ['203.0.113.10', false],
 ];
 const v6ok = v6filter.every(([ip, want]) => isGlobalV6(ip) === want);
 if (!v6ok) {
