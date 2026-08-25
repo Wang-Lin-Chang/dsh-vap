@@ -980,6 +980,9 @@ export function createMembershipNode({
   // mempool / 本轮投票状态（新节点从同步后的视图起诚实参与）。
   // 背景：新节点若以创世态直接参与，其 highestQC/lock 落后于主链，在 baseline「提案父块须
   // 扩展本地最高 QC」+ lock 安全规则下无法投票/提案，永不提交 —— 必须先同步再上链。
+  // 边界声明：本方法当前仅用于单机实验/受信部署（source 为本进程内可信节点对象）；若未来
+  // 经网络/序列化暴露，必须补 nodeId 白名单 + peerMap 校验 + 已提交前缀链/Qc 重验，
+  // 并同步 roster/peerMap（当前未同步）。
   node.syncStateFrom = function syncStateFrom(source) {
     if (!source || typeof source !== 'object') {
       return { ok: false, reason: 'syncStateFrom: source required' };

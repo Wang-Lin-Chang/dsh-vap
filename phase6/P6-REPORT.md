@@ -18,7 +18,7 @@
 | 文件 | 职责 |
 |---|---|
 | `phase6/vap-to-membership.mjs` | `createMembershipNode`（proposeJoin / endorseJoin / rotateKey / expelByEquivocation / detectEquivocation / wrapEnvelope / checkLaws / checkMembershipTx / applyMembership / applyDueChanges + 实例级 safetyRule / submitTx / commitBlock / propose / vote / signProposal 扩展） |
-| `phase6/tests/membership.test.mjs` | node:test 单测 7 条 |
+| `phase6/tests/membership.test.mjs` | node:test 单测 8 条（含「join 后新节点状态同步」1 条） |
 | `phase6/experiments/phase6-experiment.mjs` | D1-D5 实验，结构化 JSON（stdout + `phase6-results.json`） |
 | `phase6/DEPLOYMENT.md` | D6 公网灰度部署清单（诚实标注未实测） |
 | `phase6/P6-REPORT.md` | 本报告 |
@@ -26,7 +26,7 @@
 运行（在 dsh-vap/ 下）：
 
 ```
-node --test                                      # 全绿：106 条（含本阶段 7 条）
+node --test                                      # 全绿：256 条（含本阶段 8 条）
 node phase6/experiments/phase6-experiment.mjs    # D1-D5 + 结构化 JSON + 硬性自检（退出码 0）
 ```
 
