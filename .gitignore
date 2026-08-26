@@ -36,3 +36,9 @@ ops/read-sent-mail.mjs
 ops/open-abraham-mail.mjs
 ops/numerology-control.mjs
 ops/dual-relay-repro.mjs
+
+# 担保人邮件正文与一次性远端脚本（个人通信/过程产物，非仓库资产）
+ops/jim-reply-body.txt
+ops/mail-*.txt
+ops/list-repos.sh
+ops/scan-remote-repos.sh
