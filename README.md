@@ -99,7 +99,7 @@ stderr, help and results go to stdout.
 `--dry-run`. Two shapes worth knowing:
 
 ```bash
-# Claim the strongest boundary L2a — it requires non-empty evidence.devices
+# Claim the highest boundary L2a — it requires non-empty evidence.devices
 node bin/vap-send.mjs --to brain --summary "巡检完成" --boundary L2a \
   --evidence '{"devices":["E01"]}' --gateway http://127.0.0.1:3081
 
@@ -141,6 +141,9 @@ bin/                  # vap-send (envelope CLI) / vap-relay / vap-gateway / vap-
 bridges/              # MCP server (mcp-server.mjs) + A2A card/spec (a2a-*.mjs/.md)
 tests/                # regression suites (core / transport / security / deploy / bridge / cli)
 phase0/ … phase6/     # outer-ring phases: DESIGN + REPORT + experiments
+phase7/               # transport (paper 4): NAT-traversal decision state machine + STUN server + smokes
+asmfs/                # ASM-FS bounded model checker (spec-driven, 6/6) + E-1..E-6 theorem specs
+tlaplus/              # TLA+ consensus model + TLC results (paper 5): VAPConsensus, MC configs, TLC-RESULTS.md
 experiments/          # v0 / http / ring2 experiment devices
 ```
 
@@ -155,6 +158,22 @@ experiments/          # v0 / http / ring2 experiment devices
   collusion of **≥ f+1** nodes crosses the mathematical boundary.
 - **`doWork` / `respondExpand` are stubs** (see `vap-spec.md` §2): the real executor is a later phase.
 - **IPv4 multicast only**: LAN P2P (`phase2/lan-peer.mjs`) rejects IPv6 multicast literals.
+
+## Papers & formal verification
+
+The repository is the source artifact for two companion papers, both zero third-party
+dependencies and reproducible end to end:
+
+| Paper | Subject | Source | Verification |
+|---|---|---|---|
+| Paper 4 (cs.NI) | NAT-traversal decision state machine (transport layer) | `phase7/` (+ `phase4/` relay) | `punch-chain.smoke` 12/12, `punch-plan.smoke` 5/5 |
+| Paper 5 (cs.DC) | Lockstep-QC consensus: TLC model-checked safety + liveness repair | `tlaplus/` | `tlaplus/TLC-RESULTS.md` (62,064-state liveness PASS) |
+
+- `asmfs/` is a spec-driven ASM-FS bounded model checker: `node asmfs/bmc-checker.mjs`
+  runs theorems E-1..E-6 (6/6 PASS, exit 0). Bounded exhaustive ≠ universal proof.
+- `phase7/` is the production-hardened form of the transport layer: the 2026-08-25
+  hardening pass added S2 STUN-reflection protection and S3 handshake-token
+  authentication (`stun-fingerprint.mjs`); see `SECURITY.md` and `CHANGELOG.md`.
 
 ## Phase links
 

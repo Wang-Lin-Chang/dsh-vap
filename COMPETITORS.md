@@ -11,7 +11,7 @@
 | A2A | Google（已入 Agentic AI Foundation）| agent↔agent 任务委托 | 竞争维度：agent 间消息，但信任模型=相信对方输出 |
 | ACP | Zed/IBM | agent↔客户端 | 正交 |
 | ANP / Agora / UCP | 社区/联盟 | agent 身份（DID）/寻址/路由 | 竞争维度：身份层；已有 arxiv 安全威胁建模论文 |
-| **微软 IATP** | microsoft/agent-governance-toolkit | agent 间信任协议 + agent-mesh + CSA ATF 治理集成 | **最强竞争者**（组织级、治理全家桶）|
+| **微软 IATP** | microsoft/agent-governance-toolkit | agent 间信任协议 + agent-mesh + CSA ATF 治理集成 | **头号竞争者**（组织级、治理全家桶）|
 | **PIC Standard** | 社区（fossunited）| Provenance & Intent Contracts（来源与意图契约，fail-closed evidence）| **理念最接近 dsh-anchor**（意图预承诺+对账）|
 | **VACT-P** | mindify-ai | Verifiable Agent Coordination and Transaction Protocol | 名字同款，验证 agent 协调与交易 |
 | ratify-protocol | identities-ai（Go）| agent 凭据验证 | 竞争维度：验证层 |

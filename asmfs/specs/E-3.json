@@ -4,7 +4,7 @@
   "statement": "(1) liveness(pid, startSec, now) 为三分全函数，对任意候选与时刻恰返回 alive/dead/pid_reused 之一；startSec=⊥ 时退化为二证据（仅 pid 存活与否，永不出 pid_reused）。(2) 三证据收养映射：alive => 拒绝（owner-alive）、dead => 收养（win）、pid_reused => 拒绝收养（reject）。特别地，pid 存活但 startSec 不匹配（pid 复用）=> pid_reused => 拒绝收养，且在 N 并发 adopter 下仍全拒绝（0 赢家）。",
   "premises": [
     "锁记录 (pid, startSec) 为收养判定唯一依据（R3 时钟纪律：pid 存活 + starttime 恒等）。",
-    "世界态提供进程真实存活与其 startSec（作为 liveness 判定的外部事实源）。",
+    "外部态提供进程真实存活与其 startSec（作为 liveness 判定的外部事实源）。",
     "pid_reused 语义：pid 现存活进程的 startSec 与锁中 startSec 不同（原持有者已死、pid 被复用）。"
   ],
   "axioms": [

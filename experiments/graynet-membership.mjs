@@ -431,7 +431,7 @@ if (args.autonomous) {
             node.onTimeout();
             resetView();
           }
-          // 追块触发：QC 视图领先本地已提交高度 ≥5 → 向 QC 来源请求缺失区块
+          // 追块触发：QC 视图超前本地已提交高度 ≥5 → 向 QC 来源请求缺失区块
           if (Number(q.view) - node.committedHeight >= 5 && Date.now() - lastBlockRequestAt > 5000) {
             lastBlockRequestAt = Date.now();
             client.send(m.from, { type: 'gossip', from: nodeId, kind: 'blockRequest', fromHeight: node.committedHeight, count: 200, reqId: 'br-' + Date.now() });

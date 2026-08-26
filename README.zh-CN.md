@@ -95,7 +95,7 @@ node --test
 `--dry-run`。两种常用写法：
 
 ```bash
-# 声明最强边界 L2a —— 它要求 evidence.devices 非空
+# 声明最高边界 L2a —— 它要求 evidence.devices 非空
 node bin/vap-send.mjs --to brain --summary "巡检完成" --boundary L2a \
   --evidence '{"devices":["E01"]}' --gateway http://127.0.0.1:3081
 
@@ -134,6 +134,9 @@ bin/                  # vap-send（发信封 CLI）/ vap-relay / vap-gateway / v
 bridges/              # MCP 服务（mcp-server.mjs）+ A2A 卡片/规格（a2a-*.mjs/.md）
 tests/                # 回归套件（core / transport / security / deploy / bridge / cli）
 phase0/ … phase6/     # 外环各 Phase：DESIGN + REPORT + experiments
+phase7/               # 传输层（论文 4）：NAT 穿透决策状态机 + STUN 服务器 + smoke
+asmfs/                # ASM-FS 有界模型检查器（spec 驱动，6/6）+ E-1..E-6 定理 spec
+tlaplus/              # TLA+ 共识模型 + TLC 结果（论文 5）：VAPConsensus、MC 配置、TLC-RESULTS.md
 experiments/          # v0 / http / ring2 实测装置
 ```
 
@@ -146,6 +149,18 @@ experiments/          # v0 / http / ring2 实测装置
   （Phase 5/6）在 `n = 3f+1` 下容忍 `f` 个拜占庭节点，**≥ f+1 节点共谋**即越过数学边界。
 - **`doWork` / `respondExpand` 为桩**（见 `vap-spec.md` §2）：真实执行器是下一阶段题。
 - **仅支持 IPv4 组播**：LAN P2P（`phase2/lan-peer.mjs`）对 IPv6 组播字面量显式拒绝。
+
+## 论文与形式化验证
+
+本仓库是两篇论文的源码工件，均零第三方依赖、可端到端复现：
+
+| 论文 | 主题 | 源码 | 验证 |
+|---|---|---|---|
+| 论文 4（cs.NI） | NAT 穿透决策状态机（传输层） | `phase7/`（+ `phase4/` 中继） | `punch-chain.smoke` 12/12、`punch-plan.smoke` 5/5 |
+| 论文 5（cs.DC） | 锁步 QC 共识：TLC 模型检查安全 + 活性修复 | `tlaplus/` | `tlaplus/TLC-RESULTS.md`（62,064 状态活性 PASS） |
+
+- `asmfs/` 是 spec 驱动的 ASM-FS 有界模型检查器：`node asmfs/bmc-checker.mjs` 跑 E-1..E-6 六条定理（6/6 PASS，exit 0）。有界穷举 ≠ 全称证明。
+- `phase7/` 是传输层的生产加固形态：2026-08-25 加固批次新增 S2 STUN 反射防护与 S3 打洞握手 token 认证（`stun-fingerprint.mjs`）；见 `SECURITY.md` 与 `CHANGELOG.md`。
 
 ## 各 Phase 链接
 

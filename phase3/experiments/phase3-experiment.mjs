@@ -70,7 +70,7 @@ function signVapEnvelopePayload(envelope, privateKey) {
   return crypto.sign(null, Buffer.from(canonicalJson(payload), 'utf8'), privateKey).toString('base64');
 }
 
-// 世界搭建：创世锚 + 4 个持 gen-0 凭证的合格背书者 + vap-core 信封与三闸。
+// 环境搭建：创世锚 + 4 个持 gen-0 凭证的合格背书者 + vap-core 信封与三闸。
 function buildWorld() {
   const genesis = createGenesisAnchor();
   const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'vap-phase3-'));
