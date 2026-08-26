@@ -24,3 +24,15 @@ node_modules/
 # 绯荤粺
 .DS_Store
 Thumbs.db
+
+# arXiv 运维一次性脚本（含本机路径引用）
+ops/arxiv-*
+
+ops/check-ci.sh
+ops/check-repo-time.sh
+ops/find-abraham-addr.mjs
+ops/read-jim-mail.mjs
+ops/read-sent-mail.mjs
+ops/open-abraham-mail.mjs
+ops/numerology-control.mjs
+ops/dual-relay-repro.mjs
