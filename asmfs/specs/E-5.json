@@ -1,0 +1,30 @@
+{
+  "id": "E-5",
+  "title": "能力格保序嵌入：mode 序 => deny 集随许可度升序单调不增（allow 单调不减）",
+  "statement": "模式链 read-only ≤ workspace-write ≤ danger-full-access（许可度升序）下，deny 集严格单调不增：deny(read-only) ⊇ deny(workspace-write) ⊇ deny(danger-full-access)；等价地 allow 集单调不减。该映射为单射嵌入（三个 deny 集两两互异）但非满射（存在非任何模式 deny 集的子集），故为保序嵌入而非同构。",
+  "premises": [
+    "能力原语域为有限集合 C。",
+    "每个模式 m 有确定的 deny 集 deny(m) ⊆ C，allow(m) = C \\ deny(m)。",
+    "模式序 read-only ≤ workspace-write ≤ danger-full-access 表示许可度递增。"
+  ],
+  "axioms": [
+    "模式语义（受限语言 vs 完整语言 vs 全访问）为模型外给定的事实。"
+  ],
+  "apparatus": [
+    "THEOREMS.md §5：E-5 装置锚 EXP-5",
+    "THEOREMS.md §5：能力格 join/meet 良定义与弱平台不封闭的冲突，改为保序嵌入非同构（多路独立推演收敛裁决）"
+  ],
+  "boundary": "有限域：能力原语域 = {read,stat,write,create,delete,rename,staticCall,execute,net}（9 项）；模式 = {read-only, workspace-write, danger-full-access}（3 项）。逐原语 × 模式对全枚举。有界穷举 ≠ 全称证明。",
+  "claimType": "bounded-exhaustive",
+  "model": {
+    "kind": "capability-lattice",
+    "caps": ["read", "stat", "write", "create", "delete", "rename", "staticCall", "execute", "net"],
+    "modes": ["read-only", "workspace-write", "danger-full-access"],
+    "denyOf": {
+      "read-only": ["write", "create", "delete", "rename", "staticCall", "execute", "net"],
+      "workspace-write": ["execute", "net"],
+      "danger-full-access": []
+    },
+    "nonSurjectiveWitness": ["write"]
+  }
+}

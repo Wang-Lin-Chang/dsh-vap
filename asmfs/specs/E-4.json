@@ -1,0 +1,46 @@
+{
+  "id": "E-4",
+  "title": "事件溯源追加性：事件 seq 唯一（证伪优先：朴素版先出反例，修复版全绿）",
+  "statement": "事件溯源要求事件序列号 seq 唯一。证伪优先：朴素实现 seq = 事件数 + 1（read-then-write，两步非原子）在并发 event 下 seq 冲突，须先输出可重放反例；修复语义（每事件单步原子追加，等价 O_EXCL 或单追加日志）后，任意交错下 seq 严格唯一且递增。",
+  "premises": [
+    "朴素版：seq 先读（events.length + 1）后写，两步之间可被其他写者插入。",
+    "修复版：单次 fs 调用 = 原子步，seq 在同一原子步内分配，单调唯一。",
+    "事件以 (seq, e) 追加，seq 为唯一键。"
+  ],
+  "axioms": [
+    "单追加日志的 append 或 O_EXCL 创建为原子操作（OS 保证）。"
+  ],
+  "apparatus": [
+    "PROPOSAL.md 表：E-4 装置锚 源码 L383-385（seq=readdirSync().length+1 竞态）",
+    "dsh-anchor/src/plugin.ts:67-73（本地 seq++ 计数器，无 O_EXCL 的撞号面）",
+    "dsh-anchor/src/AnchorCore.ts:22-26 atomicWrite（tmp+rename）"
+  ],
+  "boundary": "有限域：证伪阶段 N=2（每进程 readSeq→writeEvent 两步）；修复阶段 N ∈ {2,3,4}（每进程单步 event）。事件数 ≤ 4。有界穷举 ≠ 全称证明。",
+  "claimType": "bounded-exhaustive (falsification-first)",
+  "model": {
+    "kind": "falsification-first",
+    "naive": {
+      "n": 2,
+      "actor": {
+        "pidBase": 3000,
+        "startSecBase": 7000,
+        "script": [
+          { "op": "readSeq" },
+          { "op": "writeEvent", "e": "ev-@i" }
+        ]
+      },
+      "initial": { "world": [] },
+      "expectedConflictSeq": [1, 1]
+    },
+    "fixed": {
+      "nRange": [2, 3, 4],
+      "actor": {
+        "pidBase": 4000,
+        "startSecBase": 6000,
+        "script": [ { "op": "event", "e": "ev-@i" } ]
+      },
+      "initial": { "world": [] },
+      "expectedTerminalStates": [2, 6, 24]
+    }
+  }
+}

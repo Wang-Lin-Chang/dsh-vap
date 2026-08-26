@@ -1,0 +1,47 @@
+{
+  "id": "E-1",
+  "title": "恰一终态：N 并发 finalize，可观察终态 done 恰好一次 + 退出码唯一",
+  "statement": "对任意 N ∈ {2,3,4} 个并发 finalize 进程、任意交错（全交错穷举），可观察终态满足：done 标记恰好写入一次（doneFile 恰为 1，幂等第二次 finalize 一律 no-op），且退出码 exitCode 为单值（恰一个 O_EXCL 胜者写入，其后永不覆盖）。",
+  "premises": [
+    "finalize 以 O_EXCL 独占创建 done 文件；文件已存在时后续 finalize 为幂等 no-op。",
+    "退出码随 done 文件同一步写入，done 文件创建者唯一决定 exitCode。",
+    "每个 finalize 进程程序序内固定（各自携带一个退出码值，可互不相同）。"
+  ],
+  "axioms": [
+    "O_EXCL 独占创建是原子操作（OS 保证），恰一写入者胜出。",
+    "tmp+rename 原子重命名是原子操作（OS 保证），不留半写文件。"
+  ],
+  "apparatus": [
+    "PROPOSAL.md 表：E-1 装置锚 EXP-3 / B-01",
+    "dsh-anchor/src/AnchorCore.ts:22-26 atomicWrite（tmp+rename 原子写）",
+    "dsh-anchor/src/AnchorCore.ts:52-58 close 写 verdict（判词文件）"
+  ],
+  "boundary": "有限域：N ∈ {2,3,4}，每进程脚本长度 2（finalize 两次，覆盖幂等）；状态空间有限（五态 × 锁 {⊥,≤4 值} × exitCode {⊥,0..N-1} × doneFile {0,1}）。有界穷举 ≠ 全称证明。",
+  "claimType": "bounded-exhaustive",
+  "model": {
+    "kind": "bfs-exhaustive",
+    "nRange": [2, 3, 4],
+    "actor": {
+      "pidBase": 1000,
+      "startSecBase": 9000,
+      "script": [
+        { "op": "finalize", "code": "@i" },
+        { "op": "finalize", "code": "@i" }
+      ]
+    },
+    "initial": {
+      "lock": { "pid": 999, "startSec": 1 },
+      "markers": { "running": 1 },
+      "world": [ { "pid": 999, "alive": true, "startSec": 1 } ]
+    },
+    "assertion": {
+      "doneWinsTarget": 1,
+      "requireExitCodeWithDone": true,
+      "requireDoneAtTerminal": true
+    },
+    "expected": {
+      "nodes": [13, 55, 217],
+      "terminalStates": [2, 3, 4]
+    }
+  }
+}

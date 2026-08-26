@@ -1,0 +1,44 @@
+{
+  "id": "E-2",
+  "title": "收养互斥：N 并发 adopt 同一孤儿，恰一赢家",
+  "statement": "对任意 N ∈ {2,3,4} 个并发 adopt 进程、任意交错（全交错穷举），针对同一孤儿（持有者已死），恰一个 adopt 胜者（O_EXCL 认领），其余全部 lose；终态 adopted 且锁唯一（恰一赢家写入其 pid:startSec）。",
+  "premises": [
+    "孤儿为锁残留：锁文件存在但持有进程已死。",
+    "adopt 在确认持有者已死后以 O_EXCL 认领收养标记，恰一赢家。",
+    "收养成功后标记 adopted、清除 orphaned、锁更新为赢家。"
+  ],
+  "axioms": [
+    "O_EXCL 独占创建是原子操作（OS 保证），恰一认领者胜出。"
+  ],
+  "apparatus": [
+    "PROPOSAL.md 表：E-2 装置锚 EXP-3",
+    "dsh-anchor/src/AnchorCore.ts:97-133 adopt（收养判定 + 净化）",
+    "dsh-anchor/src/AnchorCore.ts:31-50 open 写 intent/pre（O_EXCL 锁槽位）"
+  ],
+  "boundary": "有限域：N ∈ {2,3,4}，每进程脚本长度 1（单 adopt）；状态空间有限（五态 × 锁 × adoptWins {0,1}）。有界穷举 ≠ 全称证明。",
+  "claimType": "bounded-exhaustive",
+  "model": {
+    "kind": "bfs-exhaustive",
+    "nRange": [2, 3, 4],
+    "actor": {
+      "pidBase": 2000,
+      "startSecBase": 8000,
+      "script": [ { "op": "adopt" } ]
+    },
+    "initial": {
+      "lock": { "pid": 777, "startSec": 42 },
+      "markers": { "orphaned": 1 },
+      "world": []
+    },
+    "assertion": {
+      "adoptWinsTarget": 1,
+      "requireAdoptedWithWin": true,
+      "requireOrphanClearedAtTerminal": true,
+      "requireLockAtTerminal": true
+    },
+    "expected": {
+      "nodes": [5, 13, 33],
+      "terminalStates": [2, 3, 4]
+    }
+  }
+}

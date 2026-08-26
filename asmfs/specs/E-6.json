@@ -1,0 +1,27 @@
+{
+  "id": "E-6",
+  "title": "五态优先级唯一标签：observe 优先级对任意标记组合输出唯一标签",
+  "statement": "observe 优先级（done > running > stopping > adopted > orphaned）对任意标记组合输出唯一可观察标签：对全部 2^5 = 32 个标记子集（含空集），observe 恰返回最高优先级在场标记（空集返回 none/⊥），确定性且唯一。多标记共存（如 {done, adopted, orphaned}）时仍输出唯一标签，修正“恰一主标记”这一虚假不变量。",
+  "premises": [
+    "标记集合为 {done, running, stopping, adopted, orphaned}，可任意组合共存。",
+    "优先级为全序 done > running > stopping > adopted > orphaned。",
+    "observe 为纯函数：标记组合 => 唯一标签（含空集 none）。"
+  ],
+  "axioms": [],
+  "apparatus": [
+    "PROPOSAL.md 表：E-6 装置锚 L222-231（observe 优先级）",
+    "PROPOSAL.md 收敛裁决 3（五态同义反复打掉；observe 优先级唯一标签为可证性质）"
+  ],
+  "boundary": "有限域：标记组合全集 2^5 = 32 个子集（含空集）穷举。有界穷举 ≠ 全称证明。",
+  "claimType": "bounded-exhaustive",
+  "model": {
+    "kind": "subset-enumeration",
+    "priority": ["done", "running", "stopping", "adopted", "orphaned"],
+    "expectedSubsets": 32,
+    "singleMarkers": ["done", "running", "stopping", "adopted", "orphaned"],
+    "coexist": {
+      "markers": { "done": 1, "running": 0, "stopping": 0, "adopted": 1, "orphaned": 1 },
+      "expectedLabel": "done"
+    }
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "id": "E-3",
+  "title": "三证据健全性：liveness 三分全函数 + pid_reused 拒绝收养",
+  "statement": "(1) liveness(pid, startSec, now) 为三分全函数，对任意候选与时刻恰返回 alive/dead/pid_reused 之一；startSec=⊥ 时退化为二证据（仅 pid 存活与否，永不出 pid_reused）。(2) 三证据收养映射：alive => 拒绝（owner-alive）、dead => 收养（win）、pid_reused => 拒绝收养（reject）。特别地，pid 存活但 startSec 不匹配（pid 复用）=> pid_reused => 拒绝收养，且在 N 并发 adopter 下仍全拒绝（0 赢家）。",
+  "premises": [
+    "锁记录 (pid, startSec) 为收养判定唯一依据（R3 时钟纪律：pid 存活 + starttime 恒等）。",
+    "世界态提供进程真实存活与其 startSec（作为 liveness 判定的外部事实源）。",
+    "pid_reused 语义：pid 现存活进程的 startSec 与锁中 startSec 不同（原持有者已死、pid 被复用）。"
+  ],
+  "axioms": [
+    "进程存活查询（process liveness）与 startSec 读取为外部原子事实（模型外提供的 now 态）。"
+  ],
+  "apparatus": [
+    "PROPOSAL.md 表：E-3 装置锚 EXP-2 / B-04",
+    "PROPOSAL.md 收敛裁决 4：ADOPT 矛盾定稿语义（liveness 三分全函数；orphan 标记与收养判定同一扫描两出口）",
+    "dsh-anchor/src/AnchorCore.ts:97-133 adopt（envCheck + 净化 + 续跑建议）"
+  ],
+  "boundary": "有限域：pid ∈ {0,1,2} × startSec ∈ {⊥,100,200} × alive ∈ {false,true} × liveSec ∈ {100,200} = 36 例全枚举 + 三分支单步收养 + 复用态 N ∈ {2,3,4} 并发全拒绝。有界穷举 ≠ 全称证明。",
+  "claimType": "bounded-exhaustive",
+  "model": {
+    "kind": "trichotomy-enumeration + branch-assertions + bfs-exhaustive",
+    "trichotomy": {
+      "pids": [0, 1, 2],
+      "startSecs": [null, 100, 200],
+      "alives": [false, true],
+      "liveSecs": [100, 200],
+      "expectedCases": 36,
+      "degenerateNoReused": true
+    },
+    "branches": [
+      {
+        "name": "alive",
+        "lock": { "pid": 1, "startSec": 100 },
+        "markers": { "running": 1 },
+        "world": [ { "pid": 1, "alive": true, "startSec": 100 } ],
+        "expected": {
+          "outcome": "owner-alive",
+          "adoptWins": 0,
+          "lastLiveness": "alive",
+          "markers": { "running": 1, "adopted": 0, "orphaned": 0 }
+        }
+      },
+      {
+        "name": "dead",
+        "lock": { "pid": 1, "startSec": 100 },
+        "markers": { "orphaned": 1 },
+        "world": [],
+        "expected": {
+          "outcome": "win",
+          "adoptWins": 1,
+          "lastLiveness": "dead",
+          "markers": { "adopted": 1, "orphaned": 0 }
+        }
+      },
+      {
+        "name": "pid_reused",
+        "lock": { "pid": 1, "startSec": 100 },
+        "markers": { "orphaned": 1 },
+        "world": [ { "pid": 1, "alive": true, "startSec": 200 } ],
+        "expected": {
+          "outcome": "reject",
+          "adoptWins": 0,
+          "lastLiveness": "pid_reused",
+          "markers": { "orphaned": 1, "adopted": 0 }
+        }
+      }
+    ],
+    "concurrent": {
+      "nRange": [2, 3, 4],
+      "actor": { "pidBase": 5000, "startSecBase": 4000, "script": [ { "op": "adopt" } ] },
+      "prelude": [
+        { "op": "spawn", "pid": 1, "startSec": 100 },
+        { "op": "crash", "pid": 1, "startSec": 100 },
+        { "op": "spawn", "pid": 1, "startSec": 200 }
+      ],
+      "assertion": {
+        "adoptWinsTarget": 0,
+        "lastLivenessTarget": "pid_reused",
+        "requireOrphanedAtTerminal": true,
+        "requireNotAdoptedAtTerminal": true
+      }
+    }
+  }
+}
