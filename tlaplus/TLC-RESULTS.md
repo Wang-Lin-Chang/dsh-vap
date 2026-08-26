@@ -9,7 +9,7 @@
 
 ## 0. 结论速览（每性质一行）
 
-> **更新（2026-08-25 晚）**：本表为第一轮 TLC 运行（V1/V2 规格）的原始结论。活性三层修复后（baseline → Certified(parent) → view-change/new-view，规格 V4）的最终结论见 §9「三层修复后的最终结论」——核心变化：**稳定 leader + GST 下 EventuallyCommit 由 FAIL 变为 PASS（62,064 状态）**；完全对抗模型仍 FAIL（496,139 状态）= FLP 下界。
+> **更新（2026-08-25 晚）**：本表为第一轮 TLC 运行（V1/V2 规格）的原始结论。活性三层修复后（baseline → Certified(parent) → view-change/new-view，规格 V4）的最终结论见 §9「三层修复后的最终结论」——核心变化：**稳定 leader + GST 下 EventuallyCommit 由 FAIL 变为 PASS（62,064 状态）**；完全对抗模型仍 FAIL（496,139 状态），与 FLP 定理覆盖的完全异步场景一致。
 
 | 性质 | 结果 | 证据 | 状态空间 / 耗时 |
 |---|---|---|---|
@@ -64,9 +64,9 @@ TLC 2.19 的 SANY 解析器**全部不认**（逐字测试确认，首个 `≜` 
 
 ---
 
-## 3. 关键发现二：状态爆炸（N=4 即爆炸，且**与 Block/MaxView 关系不大**）
+## 3. 关键发现二：状态空间规模（N=4 提交类性质即达百万量级，且**与 Block/MaxView 关系不大**）
 
-在 2 核 / 3.6 GiB 老服务器上，按原稿 `MC.cfg`（N=4, Block=13, MaxView=4）**无法在合理时间/内存内完成**。逐级缩小仍爆炸：
+在 2 核 / 3.6 GiB 老服务器上，按原稿 `MC.cfg`（N=4, Block=13, MaxView=4）**无法在合理时间/内存内完成**。逐级缩小仍未收敛：
 
 | 配置 | 达到的状态规模 | 时长 | 结局 |
 |---|---|---|---|
@@ -90,7 +90,7 @@ TLC 2.19 的 SANY 解析器**全部不认**（逐字测试确认，首个 `≜` 
 | Block=7/MaxView=3（最小非空洞 3-chain） | 367,969 distinct / 328,912 队列 | ~12 min | 已终止（进程无征兆消失，非违反） |
 
 - 三者启动命令均含 `setsid nohup java … < /dev/null > log 2>&1 &`（已验证可扛 ssh 断开）。
-- **关键结论**：任何可提交（MaxView≥3）的 N=4 模型状态空间 **~4.5M+ 量级**（V3 基线后 ~1.7M），2 核服务器需数小时——这是**真实状态爆炸边界**；**安全结论以 Block=3/MaxView=2 完整穷举（80,820 状态）+ 各未收敛 run 的零违反记录为证据**（本组因时间成本终止，全程 Error=0/violated=0）。
+- **关键结论**：任何可提交（MaxView≥3）的 N=4 模型状态空间 **~4.5M+ 量级**（V3 基线后 ~1.7M），2 核服务器需数小时——这是**真实状态空间规模边界**；**安全结论以 Block=3/MaxView=2 完整穷举（80,820 状态）+ 各未收敛 run 的零违反记录为证据**（本组因时间成本终止，全程 Error=0/violated=0）。
 
 **V3 基线规格（BaselineOK + ParentCertified 投票前置）重跑**：共享工作区规格已被并行基线修复组迭代到 V3（Vote 增加 baseline/最高-QC 扩展检查 + 父块必须已认证）。用 V3 规格在隔离目录 `/home/ubuntu/tlaplus-v1/` 重跑 Block=4/MaxView=3：**~100 分钟达 1,737,197 distinct / 765,510 队列（仍在 BFS 第 12 层扩张），零违反、零 OOM，随后无征兆死亡**。**V3 基线把状态空间从 V1 的 ~4.5M 降到 ~1.7M（约 1/2.6）**，但提交维度本身仍是 ~1.7M+ 量级，2 核服务器仍无法在进程存活窗口内收敛。此即「基线检查修复活性缺口 + 削减状态空间」的量化证据（与 §5.2 的 baseline 缺失结论一致）。
 
@@ -153,9 +153,9 @@ State 7: Stuttering（永无提交，循环）
 | N=4 | Honest=3, Quorum=2 | ✅ PASS，80,820 状态 / 95s |
 | N=5 | Honest=4, **Quorum=2**（沿用 f+1） | ❌ **`QcUniquePerView` 反例**：v1 上 B1/B2 各得 2 张**互不相交**的诚实票（{n1,n2} vs {n3,n4}），同视图双 QC |
 | N=6 | Honest=5, **Quorum=2** | ❌ 同上反例 |
-| N=5 | Honest=4, **Quorum=3**（⌈2n/3⌉−f） | 状态爆炸（时序 488K 且仍增长，终止） |
+| N=5 | Honest=4, **Quorum=3**（⌈2n/3⌉−f） | 状态空间增长（时序 488K 且仍增长，终止） |
 
-**发现**：`TLA-REPORT.md §2.3` 的「`Quorum = f+1`」等价只对 **N = 3f+1（即 N=4）** 成立——此时 `⌈2n/3⌉ = 2f+1`，QC 的诚实票下界恰为 `f+1`。对 N=5/6（`3f+2`/`3f+3`），正确诚实门槛应为 **`⌈2n/3⌉ − f = 3`**；沿用 `f+1=2` 会使两个 QC 的诚实票交集为空（2+2=4 恰好铺满 4 个诚实节点），`L3` 的 quorum 交集论证失效，模型**真实违约**（且是「诚实行为」下的违约，非拜占庭攻击）。**N 上限：本模型在 2 核/3.6GiB 上实用上限即 N=4，且 N=4 本身在提交类性质上已到爆炸边界。**
+**发现**：`TLA-REPORT.md §2.3` 的「`Quorum = f+1`」等价只对 **N = 3f+1（即 N=4）** 成立——此时 `⌈2n/3⌉ = 2f+1`，QC 的诚实票下界恰为 `f+1`。对 N=5/6（`3f+2`/`3f+3`），正确诚实门槛应为 **`⌈2n/3⌉ − f = 3`**；沿用 `f+1=2` 会使两个 QC 的诚实票交集为空（2+2=4 恰好铺满 4 个诚实节点），`L3` 的 quorum 交集论证失效，模型**真实违约**（且是「诚实行为」下的违约，非拜占庭攻击）。**N 上限：本模型在 2 核/3.6GiB 上实用上限即 N=4，且 N=4 本身在提交类性质上已达量级边界。**
 
 ---
 
@@ -165,11 +165,11 @@ State 7: Stuttering（永无提交，循环）
 |---|---|
 | `VAPConsensus.tla` | **已规范化**（Unicode→ASCII + 2 处量词修复），可被 TLC 解析 |
 | `VAPConsensusLeader.tla` | 新增：稳定 leader 顺序提案细化（§5.2） |
-| `MC.tla` / `MC.cfg` | 原稿未改（Block=13/MaxView=4，会爆炸） |
+| `MC.tla` / `MC.cfg` | 原稿未改（Block=13/MaxView=4，会不收敛） |
 | `MC-N4-b3-v2.cfg` | 完整穷举通过的最小配置（§4） |
 | `MC-commit-b4-v3.cfg` / `MC-commit-b6-v3.cfg` / `MC-commit-b7.cfg` | EventuallyCommit 反例用 |
 | `MC-leader-b4-v3.cfg` / `MC-leader-b6-v3.cfg` / `MC-leader-b7.cfg` | leader 细化用 |
-| `MC-N4-b4-v3.cfg` / `MC-N4-b6-v3.cfg` / `MC-N4-b7-v3.cfg` / `MC-N4-b7.cfg` | 状态爆炸记录用 |
+| `MC-N4-b4-v3.cfg` / `MC-N4-b6-v3.cfg` / `MC-N4-b7-v3.cfg` / `MC-N4-b7.cfg` | 状态空间规模记录用 |
 | `MC-N5-b3-v2.cfg` / `MC-N6-b3-v2.cfg` | N 扩展探测用（Quorum 已更正为 3） |
 
 ---
@@ -179,7 +179,7 @@ State 7: Stuttering（永无提交，循环）
 1. **模型 ≠ 实现**：本规格证明抽象协议模型；`phase5/vap-to.mjs` 是否忠实实现 P1/P2/P3/P4 需另做实现对照。
 2. **活性未证**：`EventuallyCommit` 在完全对抗模型下反例**属实且预期**；进一步证明即使稳定 leader 也无法恢复活性，缺的是 baseline/最高-QC（V2）。
 3. **有限模型 ≠ 全称**：N=4、MaxView 有界只能证该实例；3-chain 无界归纳需 Coq/Lean（`TLA-REPORT.md §5`）。
-4. **N=4 即爆炸**：在目标老服务器上，提交类性质（MaxView≥3）的状态空间 ~10⁶ 量级，实用 N 上限 = 4。
+4. **N=4 已达量级边界**：在目标老服务器上，提交类性质（MaxView≥3）的状态空间 ~10⁶ 量级，实用 N 上限 = 4。
 5. **Quorum=f+1 仅 N=3f+1 成立**：本报告 §6 发现的参数化边界，属原报告 §2.3 未覆盖的诚实补充。
 6. **并行 V2/V3 基线细化已在服务器进行**（本组之外）：`/home/ubuntu/tlaplus/` 出现 `VAPConsensus.tla`（已加入 BaselineOK/HighestCertified/ParentCertified 等 V2/V3 基线检查）与 `run-baseline-*.log` / `run-v2-*.log`（`v2-safety` 完整穷举 64,260 状态 / 2m22s「No error」）。此非本组产出，未纳入本报告结论；本报告只覆盖 V1 规格（规范化后）的机器检查结果。
 
@@ -199,6 +199,6 @@ State 7: Stuttering（永无提交，循环）
 | 安全回归（V4，Block=3/MaxView=2 完整穷举） | **PASS**「No error」（7 不变式 + ViewProgress） | 55,188 distinct / 4min59s |
 | EventuallyCommit（稳定 leader + GST，VAPConsensusLeader.tla V4） | **PASS**「No error」——跳视图死锁消除、恢复提交 | 62,064 distinct / 5min07s |
 | EventuallyCommit（稳定 leader，无 GST） | FAIL——空基线跳视图（V4 锚定机制下的剩余形态） | 48,176 distinct / 6min19s |
-| EventuallyCommit（完全对抗） | **FAIL = FLP 下界**——拜占庭 leader 反复提父=Genesis 高视图块 + equivocate，完全异步下无协议可消除；实现侧 detectEquivocation 除名兜底 | 496,139 distinct / 37min34s |
+| EventuallyCommit（完全对抗） | **FAIL（完全异步对抗场景，与 FLP 定理边界一致）**——该模型允许拜占庭 leader 反复提父=Genesis 高视图块 + equivocate，属完全异步下共识协议共同面对的边界场景；实现侧 detectEquivocation 除名兜底 | 496,139 distinct / 37min34s |
 
-**结论**：「稳定 leader + 部分同步（GST）」下 VAP 共识的活性（最终提交）已获 TLC 机器验证 PASS；完全对抗模型下的 FAIL 是 FLP 理论下界而非缺陷。三层修复过程中每一个反例都被逐一消除或精确定位（完整轨迹见 baseline-fix/PROGRESS.md）。
+**结论**：「稳定 leader + 部分同步（GST）」下 VAP 共识的活性（最终提交）已获 TLC 机器验证 PASS；完全对抗模型下的 FAIL 与 FLP 定理覆盖的完全异步场景一致。三层修复过程中每一个反例都被逐一消除或精确定位（完整轨迹见 baseline-fix/PROGRESS.md）。
