@@ -668,3 +668,26 @@ L5  TURN 中继兜底                                  (立即)    —— 保证
 - **唯一未闭环（外部状态变更，非本会话能解）**：L2 IPv6——需人工在腾讯云控制台按 §2 路线 2 的 6 步给 `ins-096pmlyd` 开 IPv6 双栈后跑 A↔B v6 ping。除此之外本目标的全部可执行项已在本会话完成。
 
 （报告完 · R6 · 2026-08-24）
+
+---
+
+## 12. 后续闭环（2026-08-25 前向指针，取代 §11.4「唯一未闭环」结论）
+
+§11.4 在 R6 收尾时把 L2（公网 IPv6 直连）记为「唯一未闭环（外部状态变更）」：需人工在腾讯云
+控制台给 `ins-096pmlyd` 开 IPv6 双栈。该外部状态变更已于 2026-08-25 完成，L2 由「未闭环」转为
+「已闭环」，§11.3/§11.4 的「唯一未闭环」结论随之作废。证据与数字以本仓库 `phase7/` 下三份报告
+为准：
+
+- `phase7/IPV6-REPORT.md`：公网 v6 直连（家庭 2409:8a3c ↔ 腾讯云 2402:4e00），ICMP/UDP 双通，
+  RTT ~30ms（对照组 Tailscale ULA 不通，公网 v6 直连独立成立）。
+- `phase7/IPV6-DIRECT-REPORT.md`：ipv6-direct 策略前插进 fallback 链（direct-connect 之后），
+  真实公网 v6 装置 E2E 双端 PASS，payload A=2429 / B=2434。
+- `phase7/SYMMETRIC-IPV6-REPORT.md`：对称 NAT × IPv6 端到端（B 真对称、udp-punch 判死跳过），
+  executedStrategy=ipv6-direct，payload A=2728 / B=2733——对称场景唯一直连解实测打通。
+
+同步说明：§11 所述 `punch-chain.smoke.mjs` 断言数已由 R6 时的 6/6 扩充到 12/12（新增 ipv6-direct
+前插、双 GUA 第一候选、ULA/fe80 假阳性排除等断言），`punch-plan.smoke.mjs` 5/5 不变；对应实现
+`phase7/punch-chain.mjs`（isGlobalV6 + ipv6-direct step）、`phase7/punch-plan.mjs`（selectStrategy
+带 selfIpv6/peerIpv6）、`phase7/punch-node.mjs`（GUA 全展开不误滤、v6Port 显式交换、v6 puncher）
+均已入库。论文 4（cs.NI）正文的 Public IPv6 direct / ipv6-direct in chain / Symmetric NAT + IPv6
+三行数字（~30ms、2429/2434、2728/2733）由此可在本仓库 `phase7/` 沿「论文 → 报告 → 装置号」溯源。
