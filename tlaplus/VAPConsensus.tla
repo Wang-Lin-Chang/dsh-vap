@@ -10,10 +10,10 @@
 \*       以「最高 QC 的扩展」为新视图提案锚点）。
 \*       建模选择（共享状态超近似，与第一/二层同风格）：本地最高 QC = 全局 HighestCertified（派生），
 \*       故 view-change 消息内容不新增 per-node highestQC 变量（否则 Block=3/MaxView=2 从 64K 膨胀到
-\*       327K，见 PROGRESS.md §1.1）。new-view 的「已形成」同样由派生算子 NewViewOK(v) 表示
+\*       327K，见 baseline-fix/PROGRESS.md §1.1）。new-view 的「已形成」同样由派生算子 NewViewOK(v) 表示
 \*       （≥ Quorum 个诚实节点已把 view 推进到 ≥ v），不新增 newViews 状态变量 —— 实测新增该
 \*       SUBSET View 变量会使 Block=3/MaxView=2 从 64K 膨胀到 172K、且 liveness 模型在 245K/297K
-\*       状态仍不收敛（见 PROGRESS.md 第三层），故与第一/二层一致采用派生算子、零新增状态变量。
+\*       状态仍不收敛（见 baseline-fix/PROGRESS.md 第三层），故与第一/二层一致采用派生算子、零新增状态变量。
 \*       NewView(v) 动作的「唯一效果」（使视图 v 可投票/可提案）完全由派生谓词 NewViewOK(v) 捕获，
 \*       故不再单列 NewView 动作（与 HighestCertified/ParentCertified 同风格）。Vote 新增前置
 \*       NewViewOK(viewOf[b])（诚实节点只在 ≥ Quorum 节点已 view-change 到该视图后才投票；view 0 豁免）。
