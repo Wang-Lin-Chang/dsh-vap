@@ -156,7 +156,7 @@ TLA+ 规格经 TLC 2.19 真实运行（老服务器 2 核/3.6GiB）：
 - **安全不变式 7 条全部 PASS**：TypeOK / HonestVotePerView（A2）/ QcUniquePerView（L3）/ LockDominatesVotes（L4）/ CommittedImpliesCertified / NoConflictCommit（定理 T）/ NoRollback（C1）——Block=3/MaxView=2 完整穷举 80,820 状态「No error」；提交类三条在 Block=4/MaxView=3 非空洞规模 95.9 万状态未违约（部分检查）。
 - **ViewProgress（活性，视图推进）PASS**：完整穷举 + WF(ViewChange) 直接可得。
 - **EventuallyCommit（活性，最终提交）的最终状态（三层修复后，2026-08-25）**：基线反例（跳跃投票）经三层修复（baseline → Certified(parent) → view-change/new-view）全部消除，「稳定 leader + GST」下 TLC 机器验证 PASS（62,064 状态）；完全对抗模型 FAIL = FLP 下界（496,139 状态）。详见 §5 开放问题第 4 条。
-- **Quorum 参数化边界（TLC 抓出的实现 bug，已修）**：`threshold = 2f+1` 仅在 n=3f+1 时等价于 ⌈2n/3⌉；n>3f+1（N=5/6）时诚实票下界过低，TLC 给出「同视图双 QC」（两个 QC 诚实票互不相交）诚实反例。实现已改为 `max(2f+1, ⌈2n/3⌉)`（phase5 L256、phase6 recomputeQuorum），回归测试钉死（N=5 拜占庭票分发下双 QC 均不成立）。
+- **Quorum 参数化边界（TLC 抓出的实现 bug，已修）**：`threshold = 2f+1` 仅在 n=3f+1 时等价于 ⌈2n/3⌉；n>3f+1（N=5/6）时诚实票下界过低，TLC 给出「同视图双 QC」（两个 QC 诚实票互不相交）诚实反例。实现已改为 `max(2f+1, ⌈2n/3⌉)`（phase5 L259、phase6 recomputeQuorum），回归测试钉死（N=5 拜占庭票分发下双 QC 均不成立）。
 - **N 上限**：提交类性质（MaxView≥3）状态空间 ~10⁶，老服务器上实用 N 上限 = 4；N=5/6 的 Quorum 反例在 Block=3/MaxView=2 小规模即检出。
 
 ## 5. 开放问题
