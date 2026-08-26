@@ -7,6 +7,11 @@
 
 中文版见 [README.zh-CN.md](./README.zh-CN.md)。Specification: [vap-spec.md](./vap-spec.md).
 
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+[![ci](https://github.com/Wang-Lin-Chang/dsh-vap/actions/workflows/ci.yml/badge.svg)](https://github.com/Wang-Lin-Chang/dsh-vap/actions/workflows/ci.yml)
+[![topic: dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-4d6bfe)](https://github.com/topics/dsh-plugin)
+[![topic: dsh](https://img.shields.io/badge/topic-dsh-4d6bfe)](https://github.com/topics/dsh)
+
 ## Capability overview
 
 Every capability ships with an experiment device number and a control group.

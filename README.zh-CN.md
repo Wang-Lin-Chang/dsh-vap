@@ -6,6 +6,11 @@
 
 English: [README.md](./README.md)。协议规范：[vap-spec.md](./vap-spec.md)。
 
+[![license](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
+[![ci](https://github.com/Wang-Lin-Chang/dsh-vap/actions/workflows/ci.yml/badge.svg)](https://github.com/Wang-Lin-Chang/dsh-vap/actions/workflows/ci.yml)
+[![topic: dsh-plugin](https://img.shields.io/badge/topic-dsh--plugin-4d6bfe)](https://github.com/topics/dsh-plugin)
+[![topic: dsh](https://img.shields.io/badge/topic-dsh-4d6bfe)](https://github.com/topics/dsh)
+
 ## 能力总览
 
 每个能力都带实验装置编号与对照组。
